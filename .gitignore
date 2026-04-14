@@ -2,6 +2,13 @@
 
 # dependencies
 /node_modules
+/frontend/node_modules
+/backend/.venv
+/backend/.pytest_cache
+/backend/.ruff_cache
+/backend/**/*.egg-info
+**/__pycache__/
+*.pyc
 /.pnp
 .pnp.*
 .yarn/*
@@ -16,6 +23,8 @@
 # next.js
 /.next/
 /out/
+/frontend/.next/
+/frontend/out/
 
 # production
 /build
@@ -32,6 +41,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel

@@ -1,30 +1,15 @@
 {
-  "name": "translator",
-  "version": "0.1.0",
+  "name": "openrouter-translator",
+  "version": "1.0.0",
   "private": true,
+  "description": "Open-source streaming translator with a TypeScript frontend, Python backend, Supabase-ready Postgres storage, and Vercel deployment support.",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@prisma/client": "^7.7.0",
-    "bcryptjs": "^3.0.3",
-    "jose": "^6.2.2",
-    "next": "16.2.3",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "zod": "^4.3.6"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.2.3",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
+    "frontend:lint": "npm --prefix frontend run lint",
+    "backend:dev": "cd backend && uvicorn app.main:app --reload --port 8000",
+    "backend:check": "python3 -m compileall backend/app",
+    "build": "npm run frontend:build",
+    "lint": "npm run frontend:lint && npm run backend:check"
   }
 }
