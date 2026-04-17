@@ -7,8 +7,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """应用配置，从环境变量或 .env 文件读取。"""
 
-    database_url: str = Field(alias="DATABASE_URL")
-    # 本地: sqlite:///./translator.db | 生产: postgresql://...@supabase...
+    supabase_url: str = Field(alias="SUPABASE_URL")
+    # Supabase 项目 URL，格式：https://<project-ref>.supabase.co
+
+    supabase_anon_key: str = Field(alias="SUPABASE_ANON_KEY")
+    # Supabase anon/public key，用于服务端直接操作数据库（需关闭 RLS）
 
     openrouter_api_key: str = Field(alias="OPENROUTER_API_KEY", min_length=1)
     # 从 https://openrouter.ai/keys 获取
