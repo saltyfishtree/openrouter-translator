@@ -11,10 +11,13 @@ import {
 } from "react";
 
 import {
+  deleteTranslationThread,
   logout,
+  renameTranslationThread,
   requestCurrentUser,
   requestTranslationMessages,
   requestTranslationThreads,
+  searchTranslationThreads,
   translateStream,
   type CurrentUser,
   type TranslationMessage,
@@ -89,6 +92,12 @@ export function WorkspaceClient() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [copied, setCopied] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<TranslationThread[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const resultRef = useRef<HTMLDivElement | null>(null);
 
@@ -225,6 +234,31 @@ export function WorkspaceClient() {
       abortRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+
+    if (!searchQuery.trim()) {
+      setSearchResults(null);
+      return;
+    }
+
+    searchTimerRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const results = await searchTranslationThreads(searchQuery.trim());
+        setSearchResults(results);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  }, [searchQuery]);
 
   const refreshThreads = useCallback(
     async (preferredThreadId?: string | null) => {
@@ -387,6 +421,45 @@ export function WorkspaceClient() {
     setResultText("");
   }
 
+  async function handleDeleteThread(threadId: string) {
+    if (!window.confirm("确认删除这个会话？操作不可撤销。")) return;
+    try {
+      await deleteTranslationThread(threadId);
+      if (activeThreadId === threadId) {
+        setActiveThreadId(null);
+        setMessages([]);
+        setSourceText("");
+        setResultText("");
+      }
+      setSearchResults(null);
+      setSearchQuery("");
+      await refreshThreads();
+      setNotice("会话已删除。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除失败。");
+    }
+  }
+
+  async function handleRenameThread(threadId: string) {
+    const trimmed = editingTitle.trim();
+    if (!trimmed) {
+      setEditingThreadId(null);
+      return;
+    }
+    try {
+      await renameTranslationThread(threadId, trimmed);
+      setEditingThreadId(null);
+      await refreshThreads();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "重命名失败。");
+    }
+  }
+
+  function handleStartEdit(thread: TranslationThread) {
+    setEditingThreadId(thread.id);
+    setEditingTitle(thread.title);
+  }
+
   function handleEditorKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
       event.preventDefault();
@@ -441,27 +514,94 @@ export function WorkspaceClient() {
             <h2>翻译历史</h2>
             <span>{threads.length} 条会话</span>
           </div>
+
+          <div className="history-search">
+            <input
+              type="search"
+              placeholder="搜索会话..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="search-input"
+            />
+          </div>
+
           <div className="history-list">
-            {threads.length === 0 ? (
-              <p className="placeholder">还没有历史，先翻译一段内容吧。</p>
-            ) : (
-              threads.map((thread) => (
-                <button
-                  key={thread.id}
-                  className={`history-item ${
-                    activeThreadId === thread.id ? "active" : ""
-                  }`}
-                  onClick={() => setActiveThreadId(thread.id)}
-                  type="button"
-                >
-                  <strong>{thread.title}</strong>
-                  <span>{thread.lastPreview || "暂无预览"}</span>
-                  <small>
-                    {thread.messageCount} 条 · {formatTimeLabel(thread.updated_at)}
-                  </small>
-                </button>
-              ))
-            )}
+            {searching ? (
+              <p className="placeholder">搜索中...</p>
+            ) : (() => {
+              const displayThreads = searchResults ?? threads;
+              if (displayThreads.length === 0) {
+                return (
+                  <p className="placeholder">
+                    {searchQuery ? "没有匹配的会话。" : "还没有历史，先翻译一段内容吧。"}
+                  </p>
+                );
+              }
+              return displayThreads.map((thread) => (
+                <div key={thread.id} className="history-item-wrap">
+                  {editingThreadId === thread.id ? (
+                    <div className="history-item-edit">
+                      <input
+                        className="rename-input"
+                        value={editingTitle}
+                        onChange={(e) => setEditingTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void handleRenameThread(thread.id);
+                          if (e.key === "Escape") setEditingThreadId(null);
+                        }}
+                        autoFocus
+                      />
+                      <button
+                        className="text-button"
+                        onClick={() => void handleRenameThread(thread.id)}
+                        type="button"
+                      >
+                        保存
+                      </button>
+                      <button
+                        className="text-button"
+                        onClick={() => setEditingThreadId(null)}
+                        type="button"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      className={`history-item ${activeThreadId === thread.id ? "active" : ""}`}
+                      onClick={() => setActiveThreadId(thread.id)}
+                      type="button"
+                    >
+                      <strong>{thread.title}</strong>
+                      <span>{thread.lastPreview || "暂无预览"}</span>
+                      <small>
+                        {thread.messageCount} 条 · {formatTimeLabel(thread.updated_at)}
+                      </small>
+                    </button>
+                  )}
+                  <div className="history-item-actions">
+                    <button
+                      className="icon-button"
+                      onClick={() => handleStartEdit(thread)}
+                      type="button"
+                      title="重命名"
+                      aria-label="重命名"
+                    >
+                      ✏
+                    </button>
+                    <button
+                      className="icon-button danger"
+                      onClick={() => void handleDeleteThread(thread.id)}
+                      type="button"
+                      title="删除会话"
+                      aria-label="删除会话"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ));
+            })()}
           </div>
         </aside>
 
