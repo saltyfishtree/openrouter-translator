@@ -54,3 +54,8 @@ class TranslationMessageResponse(BaseModel):
     created_at: datetime = Field(alias="createdAt")
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class RenameThreadPayload(BaseModel):
+    """重命名翻译会话的请求体"""
+    title: str = Field(min_length=1, max_length=120)

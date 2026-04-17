@@ -19,6 +19,7 @@ from app.schemas import (
     AuthPayload,
     HealthResponse,
     RegisterPayload,
+    RenameThreadPayload,
     TranslationMessageResponse,
     TranslationThreadResponse,
     TranslatePayload,
@@ -241,8 +242,10 @@ def auth_logout(
 def list_translation_threads(
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(current_user_or_401)],
+    q: str | None = None,
 ) -> list[TranslationThreadResponse]:
-    thread_rows = db.execute(
+    """列出当前用户的翻译历史会话，支持关键词搜索（匹配标题）。"""
+    base_query = (
         select(
             TranslationThread,
             func.count(TranslationMessage.id).label("message_count"),
@@ -252,6 +255,14 @@ def list_translation_threads(
             TranslationMessage, TranslationMessage.thread_id == TranslationThread.id
         )
         .where(TranslationThread.user_id == user.id)
+    )
+
+    if q:
+        keyword = f"%{q.strip()}%"
+        base_query = base_query.where(TranslationThread.title.ilike(keyword))
+
+    thread_rows = db.execute(
+        base_query
         .group_by(TranslationThread.id)
         .order_by(TranslationThread.updated_at.desc())
         .limit(80)
@@ -285,6 +296,71 @@ def list_translation_threads(
         )
 
     return threads
+
+
+@app.delete("/translations/threads/{thread_id}", status_code=204)
+def delete_translation_thread(
+    thread_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user_or_401)],
+) -> None:
+    """删除指定翻译会话及其所有消息（级联删除由数据库外键保证）。"""
+    thread = db.scalar(
+        select(TranslationThread).where(
+            TranslationThread.id == thread_id,
+            TranslationThread.user_id == user.id,
+        )
+    )
+    if thread is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在。")
+    db.delete(thread)
+    db.commit()
+
+
+@app.patch("/translations/threads/{thread_id}")
+def rename_translation_thread(
+    thread_id: str,
+    payload: RenameThreadPayload,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user_or_401)],
+) -> TranslationThreadResponse:
+    """重命名指定翻译会话的标题。"""
+    thread = db.scalar(
+        select(TranslationThread).where(
+            TranslationThread.id == thread_id,
+            TranslationThread.user_id == user.id,
+        )
+    )
+    if thread is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在。")
+    thread.title = payload.title.strip()
+    db.commit()
+    db.refresh(thread)
+
+    message_count = db.scalar(
+        select(func.count(TranslationMessage.id)).where(
+            TranslationMessage.thread_id == thread.id
+        )
+    ) or 0
+    last_message = db.scalar(
+        select(TranslationMessage)
+        .where(TranslationMessage.thread_id == thread.id)
+        .order_by(TranslationMessage.created_at.desc())
+        .limit(1)
+    )
+    last_preview = (
+        " ".join(last_message.source_text.strip().split())[:120]
+        if last_message
+        else ""
+    )
+    return TranslationThreadResponse(
+        id=thread.id,
+        title=thread.title,
+        created_at=thread.created_at,
+        updated_at=thread.updated_at,
+        lastPreview=last_preview,
+        messageCount=int(message_count),
+    )
 
 
 @app.get("/translations/threads/{thread_id}/messages")
