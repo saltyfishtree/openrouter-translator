@@ -394,6 +394,165 @@ textarea {
   margin: 0;
 }
 
+.field-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.text-button.tiny {
+  font-size: 0.82rem;
+  padding: 2px 6px;
+  font-weight: 500;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.field-hint.error {
+  color: #8f2f14;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.panel-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.char-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.char-count.warning {
+  color: #a0641a;
+  font-weight: 600;
+}
+
+.char-count.over {
+  color: #8f2f14;
+  font-weight: 700;
+}
+
+.button-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.swap-button {
+  border: 1px solid var(--line);
+  background: var(--card-strong);
+  border-radius: 999px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  color: var(--accent-dark);
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.swap-button:hover:not(:disabled) {
+  transform: rotate(180deg);
+  background: rgba(187, 90, 44, 0.08);
+}
+
+.swap-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.inline-warning {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(240, 184, 84, 0.18);
+  color: #7a4d0d;
+  font-size: 0.9rem;
+}
+
+.caret {
+  display: inline-block;
+  width: 6px;
+  height: 1em;
+  margin-left: 2px;
+  background: var(--accent);
+  vertical-align: text-bottom;
+  animation: caret-blink 0.9s steps(2, start) infinite;
+  border-radius: 2px;
+}
+
+@keyframes caret-blink {
+  to {
+    opacity: 0;
+  }
+}
+
+.workspace-error {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.dismiss-button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.7;
+}
+
+.dismiss-button:hover {
+  opacity: 1;
+}
+
+.workspace-notice {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(29, 28, 26, 0.92);
+  color: #fff8f1;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  box-shadow: var(--shadow);
+  z-index: 20;
+  animation: notice-in 0.2s ease;
+}
+
+@keyframes notice-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.result-box {
+  overflow-y: auto;
+  max-height: 620px;
+}
+
 @media (max-width: 960px) {
   .workspace-layout {
     grid-template-columns: 1fr;

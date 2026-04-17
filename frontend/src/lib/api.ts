@@ -119,20 +119,24 @@ export async function requestTranslationMessages(threadId: string) {
   return (await response.json()) as TranslationMessage[];
 }
 
-export async function translateStream(payload: {
-  model: string;
-  sourceLanguage: string;
-  targetLanguage: string;
-  translationStyle: string;
-  sourceText: string;
-  threadId?: string | null;
-  contextDepth?: number;
-}) {
+export async function translateStream(
+  payload: {
+    model: string;
+    sourceLanguage: string;
+    targetLanguage: string;
+    translationStyle: string;
+    sourceText: string;
+    threadId?: string | null;
+    contextDepth?: number;
+  },
+  signal?: AbortSignal,
+) {
   const response = await fetch("/api/translate", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    signal,
   });
 
   if (!response.ok) {

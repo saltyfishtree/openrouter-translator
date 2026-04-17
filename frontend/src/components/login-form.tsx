@@ -10,16 +10,21 @@ export function LoginForm() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  const canSubmit =
+    !submitting && username.trim().length > 0 && password.length >= 8;
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canSubmit) return;
     setSubmitting(true);
     setError("");
 
     try {
-      await login({ username, password });
+      await login({ username: username.trim(), password });
       router.replace("/workspace");
     } catch (submitError) {
       setError(
@@ -31,7 +36,7 @@ export function LoginForm() {
   }
 
   return (
-    <form className="auth-card" onSubmit={handleSubmit}>
+    <form className="auth-card" onSubmit={handleSubmit} noValidate>
       <div className="auth-copy">
         <span className="eyebrow">Welcome Back</span>
         <h1>登录翻译台</h1>
@@ -45,25 +50,37 @@ export function LoginForm() {
           placeholder="例如 zjx"
           value={username}
           onChange={(event) => setUsername(event.target.value)}
+          autoFocus
           required
         />
       </label>
 
       <label className="field">
-        <span>密码</span>
+        <span className="field-header">
+          密码
+          <button
+            type="button"
+            className="text-button tiny"
+            onClick={() => setShowPassword((value) => !value)}
+            tabIndex={-1}
+          >
+            {showPassword ? "隐藏" : "显示"}
+          </button>
+        </span>
         <input
-          type="password"
+          type={showPassword ? "text" : "password"}
           autoComplete="current-password"
           placeholder="至少 8 位"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
+          minLength={8}
           required
         />
       </label>
 
       {error ? <p className="form-error">{error}</p> : null}
 
-      <button className="primary-button" type="submit" disabled={submitting}>
+      <button className="primary-button" type="submit" disabled={!canSubmit}>
         {submitting ? "登录中..." : "登录"}
       </button>
 
