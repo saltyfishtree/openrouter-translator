@@ -139,11 +139,13 @@ def current_user_or_401(
 
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
+    """健康检查接口，用于 Vercel/负载均衡器确认服务存活。"""
     return HealthResponse()
 
 
 @app.get("/auth/me", response_model=UserResponse)
 def auth_me(user: Annotated[User, Depends(current_user_or_401)]) -> UserResponse:
+    """返回当前登录用户信息。未登录时返回 401。"""
     return UserResponse.model_validate(user)
 
 
@@ -153,6 +155,7 @@ def auth_register(
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> JSONResponse:
+    """注册新用户，需要邀请码。邀请码只能使用一次。"""
     sync_default_invites(db, invite_codes_from_env(settings.default_invite_codes))
 
     username = normalize_username(payload.username)
@@ -208,6 +211,7 @@ def auth_login(
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> JSONResponse:
+    """登录已有账号，设置 session Cookie。"""
     username = normalize_username(payload.username)
     user = db.scalar(select(User).where(User.username == username))
 
@@ -231,6 +235,7 @@ def auth_logout(
     settings: Annotated[Settings, Depends(get_settings)],
     request: Request,
 ) -> JSONResponse:
+    """退出登录，清除服务端 session 和 Cookie。"""
     session_token = request.cookies.get(settings.session_cookie_name)
     delete_session(db, session_token)
     result = JSONResponse({"ok": True})
@@ -369,6 +374,7 @@ def list_translation_messages(
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(current_user_or_401)],
 ) -> list[TranslationMessageResponse]:
+    """获取指定会话的所有翻译消息，按时间升序排列。"""
     thread = db.scalar(
         select(TranslationThread).where(
             TranslationThread.id == thread_id, TranslationThread.user_id == user.id
@@ -407,6 +413,7 @@ async def translate(
     settings: Annotated[Settings, Depends(get_settings)],
     request: Request,
 ):
+    """发起流式翻译，结束后将原文/译文持久化到数据库。"""
     session_token = request.cookies.get(settings.session_cookie_name)
     user = resolve_user_from_session(db, session_token)
     if user is None:

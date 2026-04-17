@@ -7,11 +7,12 @@ from app.database import Base
 
 
 class User(Base):
+    """用户表：存储账号基本信息。"""
     __tablename__ = "users"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    username: Mapped[str] = mapped_column(String(20), unique=True, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)          # UUID
+    username: Mapped[str] = mapped_column(String(20), unique=True, index=True)  # 唯一用户名（小写）
+    password_hash: Mapped[str] = mapped_column(String(255))                 # argon2 哈希
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -32,14 +33,15 @@ class User(Base):
 
 
 class Session(Base):
+    """会话表：存储用户登录 token（服务端 session）。"""
     __tablename__ = "sessions"
     __table_args__ = (
         Index("ix_sessions_user_id", "user_id"),
         Index("ix_sessions_expires_at", "expires_at"),
     )
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)           # UUID
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)  # HMAC-SHA256
     user_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
@@ -52,14 +54,15 @@ class Session(Base):
 
 
 class InviteCode(Base):
+    """邀请码表：每个邀请码只能使用一次。"""
     __tablename__ = "invite_codes"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True, index=True)  # 规范化（小写+去空格）
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))   # None 表示未使用
     used_by_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), unique=True
     )
@@ -68,6 +71,7 @@ class InviteCode(Base):
 
 
 class TranslationThread(Base):
+    """翻译会话表：每个会话包含多条翻译消息，支持上下文连续翻译。"""
     __tablename__ = "translation_threads"
     __table_args__ = (
         Index("ix_translation_threads_user_id", "user_id"),
@@ -78,7 +82,7 @@ class TranslationThread(Base):
     user_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    title: Mapped[str] = mapped_column(String(120))
+    title: Mapped[str] = mapped_column(String(120))     # 取自第一条原文的前 42 个字符
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -93,6 +97,7 @@ class TranslationThread(Base):
 
 
 class TranslationMessage(Base):
+    """翻译消息表：每条记录是一次完整的原文→译文。"""
     __tablename__ = "translation_messages"
     __table_args__ = (
         Index("ix_translation_messages_thread_id", "thread_id"),
@@ -109,12 +114,12 @@ class TranslationMessage(Base):
     user_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
-    model: Mapped[str] = mapped_column(String(120))
-    source_language: Mapped[str] = mapped_column(String(60))
-    target_language: Mapped[str] = mapped_column(String(60))
-    translation_style: Mapped[str] = mapped_column(String(30))
-    source_text: Mapped[str] = mapped_column(Text)
-    translated_text: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(String(120))         # OpenRouter 模型 ID
+    source_language: Mapped[str] = mapped_column(String(60))  # 原文语言（"auto" 或具体语言名）
+    target_language: Mapped[str] = mapped_column(String(60))  # 目标语言
+    translation_style: Mapped[str] = mapped_column(String(30))  # "natural" 或 "faithful"
+    source_text: Mapped[str] = mapped_column(Text)           # 原文
+    translated_text: Mapped[str] = mapped_column(Text)       # 完整译文（流式结束后存储）
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
