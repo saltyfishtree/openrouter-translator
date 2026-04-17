@@ -148,3 +148,44 @@ export async function translateStream(
     threadId: response.headers.get("X-Thread-Id"),
   };
 }
+
+export async function searchTranslationThreads(q: string) {
+  const params = new URLSearchParams({ q });
+  const response = await fetch(`/api/translations/threads?${params}`, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "搜索历史失败。"));
+  }
+
+  return (await response.json()) as TranslationThread[];
+}
+
+export async function deleteTranslationThread(threadId: string) {
+  const response = await fetch(`/api/translations/threads/${threadId}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "删除会话失败。"));
+  }
+}
+
+export async function renameTranslationThread(threadId: string, title: string) {
+  const response = await fetch(`/api/translations/threads/${threadId}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "重命名失败。"));
+  }
+
+  return (await response.json()) as TranslationThread;
+}
