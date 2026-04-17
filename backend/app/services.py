@@ -81,7 +81,10 @@ def resolve_user_from_session(db: Session, token: str | None) -> User | None:
     if session is None:
         return None
 
-    if session.expires_at <= datetime.now(UTC):
+    expires_at = session.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if expires_at <= datetime.now(UTC):
         # session 已过期，从数据库删除，强制用户重新登录
         db.delete(session)
         db.commit()

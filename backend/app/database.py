@@ -14,8 +14,15 @@ class Base(DeclarativeBase):
 
 settings = get_settings()
 
+def _normalize_db_url(url: str) -> str:
+    # postgresql:// 使用 psycopg2，postgresql+psycopg:// 使用 psycopg3
+    # 统一转为 psycopg3，与 requirements.txt 中的 psycopg[binary] 对应
+    if url.startswith("postgresql://") or url.startswith("postgres://"):
+        return url.replace("://", "+psycopg://", 1)
+    return url
+
 engine = create_engine(
-    settings.database_url,
+    _normalize_db_url(settings.database_url),
     pool_pre_ping=True,   # 每次获取连接前 ping 一次，避免使用已断开的连接
     poolclass=NullPool,   # Serverless 环境下不维护连接池，每次请求独立建连
 )
