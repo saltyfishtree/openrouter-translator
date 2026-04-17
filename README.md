@@ -12,6 +12,9 @@ An open-source streaming translation app with:
 ## Highlights
 
 - Streaming translation over OpenRouter
+- Context-aware translation with thread continuity
+- Persistent source/translation storage
+- Queryable translation history and thread timeline
 - Supported models:
   - `openai/gpt-4o`
   - `openai/gpt-4o-mini`
@@ -46,6 +49,7 @@ Requests flow like this:
 2. Frontend calls `/api/...` on the same origin.
 3. Vercel routes `/api/*` to the Python backend service.
 4. Backend validates the session, talks to Postgres, and securely proxies OpenRouter.
+5. Translation turns are persisted and can be replayed as context in future requests.
 
 ## Security Model
 
@@ -159,15 +163,15 @@ Repository-level:
 npm run lint
 ```
 
-## Publishing Status
+## Translation Persistence
 
-The codebase is ready to publish, but this machine currently does not have:
+The backend now stores:
 
-- `gh` GitHub CLI
-- `vercel` CLI
-- a configured git remote
+- translation threads (`translation_threads`)
+- translation messages (`translation_messages`)
+- full source text and translated text for every turn
 
-That means the remaining blockers for automated publish are environment/auth related, not code quality related.
+When you continue translating in an existing thread, recent turns are automatically injected as context before sending the next prompt to OpenRouter.
 
 ## License
 

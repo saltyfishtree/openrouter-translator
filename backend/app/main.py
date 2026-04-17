@@ -8,17 +8,19 @@ from typing import Annotated
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.database import Base, engine, get_db
-from app.models import InviteCode, User
+from app.models import InviteCode, TranslationMessage, TranslationThread, User
 from app.schemas import (
     AuthPayload,
     HealthResponse,
     RegisterPayload,
+    TranslationMessageResponse,
+    TranslationThreadResponse,
     TranslatePayload,
     UserResponse,
 )
@@ -86,6 +88,15 @@ def build_system_prompt(payload: TranslatePayload) -> str:
             "Preserve line breaks, lists, names, code blocks, and inline formatting when present.",
         ]
     )
+
+
+def build_thread_title(text: str) -> str:
+    compact = " ".join(text.strip().split())
+    if not compact:
+        return "未命名翻译会话"
+    if len(compact) <= 42:
+        return compact
+    return f"{compact[:42]}..."
 
 
 @asynccontextmanager
@@ -226,6 +237,93 @@ def auth_logout(
     return result
 
 
+@app.get("/translations/threads")
+def list_translation_threads(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user_or_401)],
+) -> list[TranslationThreadResponse]:
+    thread_rows = db.execute(
+        select(
+            TranslationThread,
+            func.count(TranslationMessage.id).label("message_count"),
+            func.max(TranslationMessage.created_at).label("last_message_time"),
+        )
+        .outerjoin(
+            TranslationMessage, TranslationMessage.thread_id == TranslationThread.id
+        )
+        .where(TranslationThread.user_id == user.id)
+        .group_by(TranslationThread.id)
+        .order_by(TranslationThread.updated_at.desc())
+        .limit(80)
+    ).all()
+
+    threads: list[TranslationThreadResponse] = []
+    for thread, message_count, _ in thread_rows:
+        last_message = db.scalar(
+            select(TranslationMessage)
+            .where(TranslationMessage.thread_id == thread.id)
+            .order_by(TranslationMessage.created_at.desc())
+            .limit(1)
+        )
+        last_preview = ""
+        if last_message is not None:
+            last_preview = (
+                " ".join(last_message.source_text.strip().split())[:120]
+                if last_message.source_text
+                else ""
+            )
+
+        threads.append(
+            TranslationThreadResponse(
+                id=thread.id,
+                title=thread.title,
+                created_at=thread.created_at,
+                updated_at=thread.updated_at,
+                lastPreview=last_preview,
+                messageCount=int(message_count or 0),
+            )
+        )
+
+    return threads
+
+
+@app.get("/translations/threads/{thread_id}/messages")
+def list_translation_messages(
+    thread_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(current_user_or_401)],
+) -> list[TranslationMessageResponse]:
+    thread = db.scalar(
+        select(TranslationThread).where(
+            TranslationThread.id == thread_id, TranslationThread.user_id == user.id
+        )
+    )
+    if thread is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会话不存在。")
+
+    messages = db.scalars(
+        select(TranslationMessage)
+        .where(TranslationMessage.thread_id == thread_id)
+        .order_by(TranslationMessage.created_at.asc())
+        .limit(500)
+    ).all()
+
+    return [
+        TranslationMessageResponse(
+            id=message.id,
+            threadId=message.thread_id,
+            model=message.model,
+            sourceLanguage=message.source_language,
+            targetLanguage=message.target_language,
+            translationStyle=message.translation_style,
+            sourceText=message.source_text,
+            translatedText=message.translated_text,
+            createdAt=message.created_at,
+        )
+        for message in messages
+    ]
+
+
 @app.post("/translate")
 async def translate(
     payload: TranslatePayload,
@@ -239,9 +337,51 @@ async def translate(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="请先登录。")
 
     if payload.model not in MODEL_VALUES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前模型不在允许列表中。")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="当前模型不在允许列表中。"
+        )
+
+    selected_thread: TranslationThread | None = None
+    if payload.thread_id:
+        selected_thread = db.scalar(
+            select(TranslationThread).where(
+                TranslationThread.id == payload.thread_id,
+                TranslationThread.user_id == user.id,
+            )
+        )
+        if selected_thread is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="目标翻译会话不存在。"
+            )
+    else:
+        selected_thread = TranslationThread(
+            id=generate_row_id(),
+            user_id=user.id,
+            title=build_thread_title(payload.source_text),
+            updated_at=datetime.now(UTC),
+        )
+        db.add(selected_thread)
+        db.flush()
+
+    prior_messages = db.scalars(
+        select(TranslationMessage)
+        .where(TranslationMessage.thread_id == selected_thread.id)
+        .order_by(TranslationMessage.created_at.desc())
+        .limit(payload.context_depth)
+    ).all()
+    prior_messages.reverse()
+
+    prompt_messages: list[dict[str, str]] = [
+        {"role": "system", "content": build_system_prompt(payload)}
+    ]
+    for message in prior_messages:
+        prompt_messages.append({"role": "user", "content": message.source_text})
+        prompt_messages.append({"role": "assistant", "content": message.translated_text})
+
+    prompt_messages.append({"role": "user", "content": payload.source_text})
 
     async def stream_translation():
+        translated_parts: list[str] = []
         async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=20.0)) as client:
             async with client.stream(
                 "POST",
@@ -256,10 +396,7 @@ async def translate(
                     "model": payload.model,
                     "stream": True,
                     "temperature": 0.2,
-                    "messages": [
-                        {"role": "system", "content": build_system_prompt(payload)},
-                        {"role": "user", "content": payload.source_text},
-                    ],
+                    "messages": prompt_messages,
                 },
             ) as upstream:
                 if upstream.status_code != status.HTTP_200_OK:
@@ -288,12 +425,34 @@ async def translate(
                         .get("content")
                     )
                     if chunk:
+                        translated_parts.append(chunk)
                         yield chunk.encode("utf-8")
+
+        translated_text = "".join(translated_parts).strip()
+        if translated_text:
+            db.add(
+                TranslationMessage(
+                    id=generate_row_id(),
+                    thread_id=selected_thread.id,
+                    user_id=user.id,
+                    model=payload.model,
+                    source_language=payload.source_language,
+                    target_language=payload.target_language,
+                    translation_style=payload.translation_style,
+                    source_text=payload.source_text,
+                    translated_text=translated_text,
+                )
+            )
+            selected_thread.updated_at = datetime.now(UTC)
+            db.commit()
 
     return StreamingResponse(
         stream_translation(),
         media_type="text/plain; charset=utf-8",
-        headers={"Cache-Control": "no-cache, no-transform"},
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Thread-Id": selected_thread.id,
+        },
     )
 
 

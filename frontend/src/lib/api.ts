@@ -2,6 +2,27 @@ export type CurrentUser = {
   username: string;
 };
 
+export type TranslationThread = {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  lastPreview: string;
+  messageCount: number;
+};
+
+export type TranslationMessage = {
+  id: string;
+  threadId: string;
+  model: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  translationStyle: string;
+  sourceText: string;
+  translatedText: string;
+  createdAt: string;
+};
+
 async function parseError(response: Response, fallback: string) {
   try {
     const data = (await response.json()) as { error?: string };
@@ -68,4 +89,58 @@ export async function logout() {
   if (!response.ok) {
     throw new Error(await parseError(response, "退出登录失败。"));
   }
+}
+
+export async function requestTranslationThreads() {
+  const response = await fetch("/api/translations/threads", {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "加载翻译历史失败。"));
+  }
+
+  return (await response.json()) as TranslationThread[];
+}
+
+export async function requestTranslationMessages(threadId: string) {
+  const response = await fetch(`/api/translations/threads/${threadId}/messages`, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "加载会话详情失败。"));
+  }
+
+  return (await response.json()) as TranslationMessage[];
+}
+
+export async function translateStream(payload: {
+  model: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  translationStyle: string;
+  sourceText: string;
+  threadId?: string | null;
+  contextDepth?: number;
+}) {
+  const response = await fetch("/api/translate", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, "翻译失败，请稍后再试。"));
+  }
+
+  return {
+    response,
+    threadId: response.headers.get("X-Thread-Id"),
+  };
 }
