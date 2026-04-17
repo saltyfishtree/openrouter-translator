@@ -257,7 +257,7 @@ def list_translation_threads(
         .where(TranslationThread.user_id == user.id)
     )
 
-    if q:
+    if q and q.strip():
         keyword = f"%{q.strip()}%"
         base_query = base_query.where(TranslationThread.title.ilike(keyword))
 
