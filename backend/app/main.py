@@ -99,9 +99,6 @@ def build_thread_title(text: str) -> str:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    supabase = get_supabase()
-    settings = get_settings()
-    sync_default_invites(supabase, invite_codes_from_env(settings.default_invite_codes))
     yield
 
 
@@ -466,48 +463,53 @@ async def translate(
         prompt_messages.append({"role": "assistant", "content": msg["translated_text"]})
     prompt_messages.append({"role": "user", "content": payload.source_text})
 
+    client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=20.0))
+    upstream_request = client.build_request(
+        "POST",
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {settings.openrouter_api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": settings.app_base_url,
+            "X-Title": settings.openrouter_app_name,
+        },
+        json={
+            "model": payload.model,
+            "stream": True,
+            "temperature": 0.2,
+            "messages": prompt_messages,
+        },
+    )
+    upstream = await client.send(upstream_request, stream=True)
+    if upstream.status_code != status.HTTP_200_OK:
+        await upstream.aclose()
+        await client.aclose()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="OpenRouter 请求失败，请检查服务端密钥、额度或模型配置。",
+        )
+
     async def stream_translation():
         translated_parts: list[str] = []
-        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=20.0)) as client:
-            async with client.stream(
-                "POST",
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.openrouter_api_key}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": settings.app_base_url,
-                    "X-Title": settings.openrouter_app_name,
-                },
-                json={
-                    "model": payload.model,
-                    "stream": True,
-                    "temperature": 0.2,
-                    "messages": prompt_messages,
-                },
-            ) as upstream:
-                if upstream.status_code != status.HTTP_200_OK:
-                    raise HTTPException(
-                        status_code=status.HTTP_502_BAD_GATEWAY,
-                        detail="OpenRouter 请求失败，请检查服务端密钥、额度或模型配置。",
-                    )
-
-                async for line in upstream.aiter_lines():
-                    trimmed = line.strip()
-                    if not trimmed.startswith("data:"):
-                        continue
-                    body = trimmed[5:].strip()
-                    if not body or body == "[DONE]":
-                        continue
-                    try:
-                        event = json.loads(body)
-                    except json.JSONDecodeError:
-                        continue
-                    chunk = (
-                        event.get("choices", [{}])[0].get("delta", {}).get("content")
-                    )
-                    if chunk:
-                        translated_parts.append(chunk)
-                        yield chunk.encode("utf-8")
+        try:
+            async for line in upstream.aiter_lines():
+                trimmed = line.strip()
+                if not trimmed.startswith("data:"):
+                    continue
+                body = trimmed[5:].strip()
+                if not body or body == "[DONE]":
+                    continue
+                try:
+                    event = json.loads(body)
+                except json.JSONDecodeError:
+                    continue
+                chunk = event.get("choices", [{}])[0].get("delta", {}).get("content")
+                if chunk:
+                    translated_parts.append(chunk)
+                    yield chunk.encode("utf-8")
+        finally:
+            await upstream.aclose()
+            await client.aclose()
 
         translated_text = "".join(translated_parts).strip()
         if translated_text:
@@ -543,4 +545,12 @@ async def http_exception_handler(_, exc: HTTPException):
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": exc.detail},
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(_, exc: Exception):
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"error": "服务端内部错误，请稍后重试。"},
     )

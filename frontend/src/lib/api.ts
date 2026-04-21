@@ -25,10 +25,17 @@ export type TranslationMessage = {
 
 async function parseError(response: Response, fallback: string) {
   try {
-    const data = (await response.json()) as { error?: string };
-    return data.error ?? fallback;
-  } catch {
+    const data = (await response.json()) as { error?: string; detail?: string };
+    if (typeof data.error === "string" && data.error.trim()) {
+      return data.error;
+    }
+    if (typeof data.detail === "string" && data.detail.trim()) {
+      return data.detail;
+    }
     return fallback;
+  } catch {
+    const text = await response.text().catch(() => "");
+    return text.trim() || fallback;
   }
 }
 
