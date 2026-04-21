@@ -1,6 +1,6 @@
 # 后端 API 文档
 
-> **技术栈**：Python 3.11+ · FastAPI · SQLAlchemy 2 · Supabase PostgreSQL（生产）/ SQLite（本地）
+> **技术栈**：Python 3.11+ · FastAPI · Supabase（存储） · OpenRouter
 
 ---
 
@@ -10,8 +10,7 @@
 backend/
 └── app/
     ├── config.py      # 环境变量配置（pydantic-settings）
-    ├── database.py    # SQLAlchemy 引擎 & Session 工厂
-    ├── models.py      # ORM 数据模型
+    ├── database.py    # Supabase Client 工厂
     ├── schemas.py     # Pydantic 请求/响应模型
     ├── security.py    # 密码哈希、Session token 生成
     ├── services.py    # 业务逻辑（Session 管理、邀请码同步）
@@ -27,7 +26,8 @@ api/
 
 | 变量名 | 必填 | 说明 |
 |--------|------|------|
-| `DATABASE_URL` | ✅ | SQLite: `sqlite:///./translator.db`；Supabase: `postgresql://postgres:PASSWORD@db.PROJECT.supabase.co:5432/postgres` |
+| `SUPABASE_URL` | ✅ | Supabase 项目地址，例如 `https://PROJECT.supabase.co` |
+| `SUPABASE_KEY` | ✅ | 服务端 Supabase key；也兼容 `SUPABASE_ANON_KEY` |
 | `OPENROUTER_API_KEY` | ✅ | 从 [openrouter.ai/keys](https://openrouter.ai/keys) 获取 |
 | `AUTH_SECRET` | ✅ | 至少 16 位随机字符串，用于 Session token HMAC 签名 |
 | `DEFAULT_INVITE_CODES` | — | 逗号分隔，默认 `zjxai`，首次启动自动写入数据库 |
@@ -51,8 +51,8 @@ pip install -e "backend[dev]"
 # 4. 复制并填写环境变量
 cp .env.example .env  # 编辑 .env，填入真实值
 
-# 5. 启动后端（数据库表自动建立）
-DATABASE_URL=sqlite:///./translator.db uvicorn backend.app.main:app --port 8000 --reload
+# 5. 启动后端
+SUPABASE_URL=https://your-project.supabase.co SUPABASE_KEY=your-key uvicorn backend.app.main:app --port 8000 --reload
 
 # 6. 启动前端（新终端）
 npm run dev

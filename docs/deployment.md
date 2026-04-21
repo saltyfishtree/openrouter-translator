@@ -21,7 +21,8 @@ Set the Framework Preset to `Services` in the Vercel dashboard.
 
 Configure these in Vercel:
 
-- `DATABASE_URL`
+- `SUPABASE_URL`
+- `SUPABASE_KEY` (or `SUPABASE_ANON_KEY`)
 - `OPENROUTER_API_KEY`
 - `AUTH_SECRET`
 - `DEFAULT_INVITE_CODES`
@@ -30,9 +31,9 @@ Configure these in Vercel:
 
 ## Supabase
 
-Use the Supabase Postgres connection string for `DATABASE_URL`.
+Use your Supabase project URL for `SUPABASE_URL`.
 
-If you use the Vercel Marketplace integration, finish provisioning in the Vercel project first, then copy or map the final Postgres URL into `DATABASE_URL`.
+Use a server-side Supabase key for `SUPABASE_KEY`. If you use the Vercel Marketplace integration, the environment variable is often provisioned as `SUPABASE_KEY`, which this project now supports directly.
 
 ## Secret handling
 

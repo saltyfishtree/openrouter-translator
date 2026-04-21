@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,8 +10,10 @@ class Settings(BaseSettings):
     supabase_url: str = Field(alias="SUPABASE_URL")
     # Supabase 项目 URL，格式：https://<project-ref>.supabase.co
 
-    supabase_anon_key: str = Field(alias="SUPABASE_ANON_KEY")
-    # Supabase anon/public key，用于服务端直接操作数据库（需关闭 RLS）
+    supabase_key: str = Field(
+        validation_alias=AliasChoices("SUPABASE_KEY", "SUPABASE_ANON_KEY")
+    )
+    # Supabase key，兼容 Vercel/Supabase 集成常见命名
 
     openrouter_api_key: str = Field(alias="OPENROUTER_API_KEY", min_length=1)
     # 从 https://openrouter.ai/keys 获取
@@ -37,7 +39,7 @@ class Settings(BaseSettings):
     # Session 有效期：30 天
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "../.env"),
         env_file_encoding="utf-8",
         extra="ignore",
         populate_by_name=True,

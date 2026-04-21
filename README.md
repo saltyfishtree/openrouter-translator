@@ -38,7 +38,7 @@ An open-source streaming translation app with:
 
 - Frontend: Next.js 16 + React 19 + TypeScript
 - Backend: FastAPI + SQLAlchemy + psycopg + httpx
-- Database: Postgres, designed to work cleanly with Supabase Postgres
+- Database: Supabase-backed storage via the Supabase HTTP API
 - Deployment: Vercel Services
   - `web` service serves the frontend at `/`
   - `api` service serves the Python backend at `/api`
@@ -48,7 +48,7 @@ Requests flow like this:
 1. Browser sends UI actions to the frontend.
 2. Frontend calls `/api/...` on the same origin.
 3. Vercel routes `/api/*` to the Python backend service.
-4. Backend validates the session, talks to Postgres, and securely proxies OpenRouter.
+4. Backend validates the session, talks to Supabase, and securely proxies OpenRouter.
 5. Translation turns are persisted and can be replayed as context in future requests.
 
 ## Security Model
@@ -89,7 +89,8 @@ cd ..
 
 Copy [.env.example](/Users/admin/Desktop/personal/translator/.env.example) to `.env` and fill in:
 
-- `DATABASE_URL`
+- `SUPABASE_URL`
+- `SUPABASE_KEY` (or `SUPABASE_ANON_KEY`)
 - `OPENROUTER_API_KEY`
 - `AUTH_SECRET`
 - `DEFAULT_INVITE_CODES`
@@ -112,16 +113,17 @@ The frontend proxies `/api/*` to `http://127.0.0.1:8000` during local developmen
 
 ## Supabase Setup
 
-This project is intentionally compatible with Supabase Postgres through `DATABASE_URL`.
+This project uses Supabase directly through `SUPABASE_URL` and a server-side Supabase key.
 
 Recommended production setup:
 
 1. Create a Supabase project.
-2. Use its Postgres connection string as `DATABASE_URL`.
-3. Install the Supabase integration from Vercel Marketplace if you want project-linked provisioning and secret management.
-4. Keep all database and OpenRouter credentials server-side only.
+2. Copy the project URL into `SUPABASE_URL`.
+3. Copy a server-side Supabase key into `SUPABASE_KEY`.
+4. Install the Supabase integration from Vercel Marketplace if you want project-linked provisioning and secret management.
+5. Keep all database and OpenRouter credentials server-side only.
 
-You do not need to expose `SUPABASE_ANON_KEY` to the frontend for this project, because authentication and data access are handled by the Python backend.
+You do not need to expose any Supabase key to the frontend for this project, because authentication and data access are handled by the Python backend.
 
 ## Vercel Deployment
 
@@ -132,7 +134,8 @@ Before deploying:
 1. Import the repository into Vercel.
 2. Set the project Framework Preset to `Services`.
 3. Add environment variables in Vercel Project Settings:
-   - `DATABASE_URL`
+   - `SUPABASE_URL`
+   - `SUPABASE_KEY` (or `SUPABASE_ANON_KEY`)
    - `OPENROUTER_API_KEY`
    - `AUTH_SECRET`
    - `DEFAULT_INVITE_CODES`
