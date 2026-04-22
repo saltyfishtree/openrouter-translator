@@ -25,10 +25,17 @@ export type TranslationMessage = {
 
 async function parseError(response: Response, fallback: string) {
   try {
-    const data = (await response.json()) as { error?: string };
-    return data.error ?? fallback;
-  } catch {
+    const data = (await response.json()) as { error?: string; detail?: string };
+    if (typeof data.error === "string" && data.error.trim()) {
+      return data.error;
+    }
+    if (typeof data.detail === "string" && data.detail.trim()) {
+      return data.detail;
+    }
     return fallback;
+  } catch {
+    const text = await response.text().catch(() => "");
+    return text.trim() || fallback;
   }
 }
 
@@ -122,9 +129,11 @@ export async function requestTranslationMessages(threadId: string) {
 export async function translateStream(
   payload: {
     model: string;
+    taskMode: string;
     sourceLanguage: string;
     targetLanguage: string;
     translationStyle: string;
+    terminologyPreferences?: string;
     sourceText: string;
     threadId?: string | null;
     contextDepth?: number;
@@ -147,45 +156,4 @@ export async function translateStream(
     response,
     threadId: response.headers.get("X-Thread-Id"),
   };
-}
-
-export async function searchTranslationThreads(q: string) {
-  const params = new URLSearchParams({ q });
-  const response = await fetch(`/api/translations/threads?${params}`, {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(await parseError(response, "搜索历史失败。"));
-  }
-
-  return (await response.json()) as TranslationThread[];
-}
-
-export async function deleteTranslationThread(threadId: string) {
-  const response = await fetch(`/api/translations/threads/${threadId}`, {
-    method: "DELETE",
-    credentials: "include",
-  });
-
-  if (!response.ok) {
-    throw new Error(await parseError(response, "删除会话失败。"));
-  }
-}
-
-export async function renameTranslationThread(threadId: string, title: string) {
-  const response = await fetch(`/api/translations/threads/${threadId}`, {
-    method: "PATCH",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title }),
-  });
-
-  if (!response.ok) {
-    throw new Error(await parseError(response, "重命名失败。"));
-  }
-
-  return (await response.json()) as TranslationThread;
 }
