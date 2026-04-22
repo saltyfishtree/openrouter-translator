@@ -81,6 +81,7 @@ textarea {
 
 .product-card {
   width: min(100%, 760px);
+  gap: 16px;
 }
 
 .auth-copy h1,
@@ -193,12 +194,13 @@ textarea {
 .stack-actions {
   display: flex;
   gap: 12px;
+  align-items: stretch;
 }
 
 .product-points {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .product-point,
@@ -206,9 +208,10 @@ textarea {
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.56);
   border-radius: 18px;
-  padding: 14px 15px;
+  padding: 12px 14px;
   display: grid;
-  gap: 6px;
+  gap: 4px;
+  align-content: start;
 }
 
 .product-point strong,
@@ -272,9 +275,9 @@ textarea {
 
 .doc-hero-copy p {
   margin: 0;
-  max-width: 760px;
+  max-width: 560px;
   color: #526074;
-  line-height: 1.7;
+  line-height: 1.55;
 }
 
 .doc-hero-meta {
@@ -336,7 +339,7 @@ textarea {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  align-items: baseline;
+  align-items: center;
   margin-bottom: 14px;
 }
 
@@ -388,20 +391,21 @@ textarea {
 
 .mode-banner {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 16px;
 }
 
 .mode-banner-copy {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .mode-banner p {
   margin: 0;
-  max-width: 560px;
-  line-height: 1.65;
+  max-width: 240px;
+  text-align: right;
+  line-height: 1.4;
 }
 
 .mode-tags {
@@ -418,27 +422,6 @@ textarea {
   padding: 6px 10px;
   font-size: 0.78rem;
   font-weight: 600;
-}
-
-.quick-prompt-strip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.quick-prompt {
-  border: 1px solid rgba(25, 36, 53, 0.08);
-  background: rgba(255, 255, 255, 0.72);
-  color: #3d4f68;
-  border-radius: 18px;
-  padding: 14px 15px;
-  text-align: left;
-  line-height: 1.5;
-  min-height: 92px;
-}
-
-.quick-prompt:hover {
-  transform: translateY(-1px);
 }
 
 .workbench-grid {
@@ -490,32 +473,8 @@ textarea {
   box-shadow: 0 0 0 4px rgba(70, 120, 202, 0.1);
 }
 
-.glossary-summary {
-  border: 1px solid rgba(44, 94, 176, 0.1);
-  background: linear-gradient(180deg, rgba(241, 247, 255, 0.92), rgba(250, 252, 255, 0.82));
-  border-radius: 18px;
-  padding: 14px 16px;
-  display: grid;
-  gap: 6px;
-}
-
-.glossary-summary strong {
-  font-size: 1.7rem;
-  color: #173258;
-  line-height: 1;
-}
-
-.glossary-summary span,
-.glossary-actions p {
-  color: #65758a;
-  line-height: 1.55;
-  margin: 0;
-  font-size: 0.88rem;
-}
-
 .glossary-actions {
-  display: grid;
-  gap: 10px;
+  display: flex;
 }
 
 .preset-chip {

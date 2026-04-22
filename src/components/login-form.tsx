@@ -40,7 +40,7 @@ export function LoginForm() {
       <div className="auth-copy">
         <span className="eyebrow">Sign In</span>
         <h1>回到你的工作台</h1>
-        <p>继续处理翻译、润色和芯片文档问答。历史记录、上下文和个人术语偏好都会自动恢复。</p>
+        <p>继续处理你的翻译与写作任务。</p>
       </div>
 
       <label className="field">
@@ -83,11 +83,6 @@ export function LoginForm() {
       <button className="primary-button" type="submit" disabled={!canSubmit}>
         {submitting ? "登录中..." : "继续"}
       </button>
-
-      <div className="auth-note">
-        <strong>安全说明</strong>
-        <span>密码仅由后端处理并以安全哈希保存，浏览器不会直接接触模型密钥。</span>
-      </div>
 
       <p className="form-footer">
         没有账号？<Link href="/register">去注册</Link>

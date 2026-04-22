@@ -46,13 +46,11 @@ type Prefs = {
 type ModeCopy = {
   badge: string;
   title: string;
-  description: string;
   inputLabel: string;
   inputPlaceholder: string;
   outputLabel: string;
   actionLabel: string;
   helper: string;
-  promptIdeas: string[];
 };
 
 function prefsStorageKey(username: string) {
@@ -99,19 +97,11 @@ function modeCopy(taskMode: TaskMode): ModeCopy {
     return {
       badge: "English Editing",
       title: "英文润色工作台",
-      description:
-        "适合把原始英文技术文稿改写成更像正式文档的版本，尤其适合芯片文档、规格说明和发布说明。",
       inputLabel: "待润色英文",
-      inputPlaceholder:
-        "粘贴原始英文内容，例如 draft paragraph、release note、邮件草稿或 datasheet 文段。",
+      inputPlaceholder: "输入或粘贴英文内容",
       outputLabel: "润色结果",
       actionLabel: "开始润色",
-      helper: "系统会默认保留原意、提高清晰度，并尽量使用稳定的技术写作风格。",
-      promptIdeas: [
-        "Please polish the following release-note paragraph for a customer-facing audience.",
-        "Rewrite this app-note introduction to be clearer and more technically precise.",
-        "Tighten this internal engineering summary without changing the meaning.",
-      ],
+      helper: "保留原意，优化表达。",
     };
   }
 
@@ -119,38 +109,22 @@ function modeCopy(taskMode: TaskMode): ModeCopy {
     return {
       badge: "Chip Copilot",
       title: "芯片问答工作台",
-      description:
-        "把它当成文档工程师的芯片领域 copilot，用来理解术语、整理思路、比较方案，或者先起草一段说明。",
       inputLabel: "问题或任务",
-      inputPlaceholder:
-        "例如：请解释 chiplet 与 monolithic die 的主要取舍；请帮我写一段更容易理解的 PLL 说明。",
+      inputPlaceholder: "输入问题或任务",
       outputLabel: "回答",
       actionLabel: "开始提问",
-      helper: "更适合概念解释、写作辅助、术语辨析和半导体技术场景问答。",
-      promptIdeas: [
-        "请比较 chiplet 与 monolithic die 在成本、封装和验证上的差异。",
-        "请帮我解释 leakage current 与 static power 的关系，面向非设计背景读者。",
-        "请给我一版更适合 datasheet 的 ESD 保护说明。",
-      ],
+      helper: "面向芯片与技术写作场景。",
     };
   }
 
   return {
     badge: "Document Translation",
     title: "文章翻译工作台",
-    description:
-      "适合处理 datasheet、app note、whitepaper、邮件、博客和长段技术资料，支持上下文连续翻译。",
     inputLabel: "原文",
-    inputPlaceholder:
-      "粘贴待翻译内容。系统会保留标题、列表、换行、代码块和术语结构。",
+    inputPlaceholder: "输入或粘贴待处理内容",
     outputLabel: "译文",
     actionLabel: "开始翻译",
-    helper: "如果你经常处理固定芯片词汇，可以把术语偏好写在右侧，模型会尽量保持统一。",
-    promptIdeas: [
-      "Please translate the following datasheet section into Simplified Chinese.",
-      "Translate this app-note paragraph and preserve all list structure.",
-      "Translate this customer email into natural Chinese while keeping technical terms precise.",
-    ],
+    helper: "适合连续处理技术文档。",
   };
 }
 
@@ -551,11 +525,6 @@ export function WorkspaceClient() {
     setNotice(`已切换到${taskModeOptions.find((item) => item.value === nextMode)?.label}模式。`);
   }
 
-  function handleUsePromptIdea(value: string) {
-    setSourceText(value);
-    setNotice("已填入示例草稿，你可以直接修改后使用。");
-  }
-
   function handleApplyTerminologyPreset(value: string) {
     setTerminologyPreferences((current) =>
       current.trim() ? `${current.trim()}\n${value}` : value,
@@ -593,7 +562,7 @@ export function WorkspaceClient() {
         <div className="doc-hero-copy">
           <span className="eyebrow">{copy.badge}</span>
           <h1>{copy.title}</h1>
-          <p>{copy.description}</p>
+          <p>{copy.helper}</p>
         </div>
         <div className="doc-hero-meta">
           <div className="identity-chip">
@@ -616,7 +585,7 @@ export function WorkspaceClient() {
           <section className="sidebar-card">
             <div className="sidebar-card-header">
               <h2>任务模式</h2>
-              <span>面向文档工程师</span>
+              <span>3 种模式</span>
             </div>
             <div className="mode-list">
               {taskModeOptions.map((item) => (
@@ -666,28 +635,14 @@ export function WorkspaceClient() {
         <main className="doc-main">
           <section className="main-card mode-banner">
             <div className="mode-banner-copy">
-              <span className="section-kicker">当前模式</span>
+              <span className="section-kicker">Workspace</span>
               <h2>{copy.title}</h2>
               <div className="mode-tags">
                 <span>{taskModeOptions.find((item) => item.value === taskMode)?.label}</span>
-                <span>芯片文档优先</span>
                 <span>支持流式输出</span>
               </div>
             </div>
-            <p>{copy.helper}</p>
-          </section>
-
-          <section className="quick-prompt-strip">
-            {copy.promptIdeas.map((idea) => (
-              <button
-                key={idea}
-                className="quick-prompt"
-                onClick={() => handleUsePromptIdea(idea)}
-                type="button"
-              >
-                {idea}
-              </button>
-            ))}
+            <p>{copy.inputLabel}</p>
           </section>
 
           <section className="workbench-grid">
@@ -833,7 +788,7 @@ export function WorkspaceClient() {
           <section className="rail-card">
             <div className="sidebar-card-header">
               <h2>工作配置</h2>
-              <span>按任务微调</span>
+              <span>当前设置</span>
             </div>
             <div className="field-stack">
               <label className="field">
@@ -917,13 +872,7 @@ export function WorkspaceClient() {
           <section className="rail-card">
             <div className="sidebar-card-header">
               <h2>个人术语本</h2>
-              <span>按账号保存</span>
-            </div>
-            <div className="glossary-summary">
-              <strong>{glossaryRuleCount}</strong>
-              <span>
-                条固定词法 / 风格规则会一起送给模型，适合术语统一、芯片缩写保留和固定译法。
-              </span>
+              <span>{glossaryRuleCount} 条</span>
             </div>
             <label className="field">
               <span>术语映射 / 风格规则</span>
@@ -943,7 +892,6 @@ export function WorkspaceClient() {
               >
                 清空术语本
               </button>
-              <p>同一账号下会自动记住，不需要重复填写。</p>
             </div>
             <div className="preset-stack">
               {terminologyPresets.map((preset) => (

@@ -53,23 +53,21 @@ export function LandingClient() {
         <div className="auth-copy">
           <span className="eyebrow">Translator Workspace</span>
           <h1>面向文档工程师的 AI 工作台</h1>
-          <p>
-            用一套干净的工作流完成文章翻译、英文润色和芯片技术问答，让术语、上下文和历史记录都留在同一个地方。
-          </p>
+          <p>翻译、润色、问答，在同一套工作流里完成。</p>
         </div>
 
         <div className="product-points">
           <article className="product-point">
             <strong>长文翻译</strong>
-            <span>适合 datasheet、app note、whitepaper 和客户邮件。</span>
+            <span>面向技术文档</span>
           </article>
           <article className="product-point">
             <strong>术语统一</strong>
-            <span>支持个人术语本，适合固定芯片词法和团队写作口径。</span>
+            <span>保留固定词法</span>
           </article>
           <article className="product-point">
             <strong>流式输出</strong>
-            <span>翻译、润色和问答都可以边生成边查看，不用整段等待。</span>
+            <span>结果实时返回</span>
           </article>
         </div>
 
