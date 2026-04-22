@@ -7,16 +7,24 @@ import {
   useMemo,
   useRef,
   useState,
+  type FormEvent,
   type KeyboardEvent,
 } from "react";
 
 import {
+  createGlossaryTerm,
+  deleteGlossaryTerm,
+  deleteTranslationThread,
   logout,
+  renameTranslationThread,
   requestCurrentUser,
+  requestGlossary,
   requestTranslationMessages,
   requestTranslationThreads,
   translateStream,
+  updateGlossaryTerm,
   type CurrentUser,
+  type GlossaryTerm,
   type TranslationMessage,
   type TranslationThread,
 } from "@/lib/api";
@@ -24,13 +32,12 @@ import {
   languageOptions,
   modelOptions,
   taskModeOptions,
-  terminologyPresets,
   translationStyles,
 } from "@/lib/constants";
 
 const MAX_SOURCE_CHARS = 12000;
-const PREFS_STORAGE_KEY = "translator:prefs:v3";
-const DRAFT_STORAGE_KEY = "translator:draft:v2";
+const PREFS_KEY = "tx:prefs:v4";
+const DRAFT_KEY = "tx:draft:v3";
 
 type TaskMode = "translate" | "polish" | "ask";
 
@@ -40,51 +47,32 @@ type Prefs = {
   sourceLanguage: string;
   targetLanguage: string;
   translationStyle: string;
-  terminologyPreferences: string;
 };
 
-type ModeCopy = {
-  badge: string;
-  title: string;
-  inputLabel: string;
-  inputPlaceholder: string;
-  outputLabel: string;
-  actionLabel: string;
-  helper: string;
-};
+type DrawerView = null | "history" | "glossary" | "messages";
 
-function prefsStorageKey(username: string) {
-  return `${PREFS_STORAGE_KEY}:${username.trim().toLowerCase()}`;
+function prefsKey(username: string) {
+  return `${PREFS_KEY}:${username.toLowerCase()}`;
 }
 
-function loadPrefs(username: string): Prefs | null {
+function loadPrefs(username: string): Partial<Prefs> | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(prefsStorageKey(username));
-    if (!raw) return null;
-    return JSON.parse(raw) as Prefs;
+    const raw = window.localStorage.getItem(prefsKey(username));
+    return raw ? (JSON.parse(raw) as Prefs) : null;
   } catch {
     return null;
   }
 }
 
 function savePrefs(username: string, prefs: Prefs) {
-  if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(prefsStorageKey(username), JSON.stringify(prefs));
+    window.localStorage.setItem(prefsKey(username), JSON.stringify(prefs));
   } catch {}
 }
 
-function countGlossaryRules(value: string) {
-  return value
-    .split("\n")
-    .map((item) => item.trim())
-    .filter(Boolean).length;
-}
-
-function formatTimeLabel(value: string) {
-  const date = new Date(value);
-  return date.toLocaleString("zh-CN", {
+function formatTime(value: string) {
+  return new Date(value).toLocaleString("zh-CN", {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -92,59 +80,14 @@ function formatTimeLabel(value: string) {
   });
 }
 
-function modeCopy(taskMode: TaskMode): ModeCopy {
-  if (taskMode === "polish") {
-    return {
-      badge: "English Editing",
-      title: "英文润色工作台",
-      inputLabel: "待润色英文",
-      inputPlaceholder: "输入或粘贴英文内容",
-      outputLabel: "润色结果",
-      actionLabel: "开始润色",
-      helper: "保留原意，优化表达。",
-    };
-  }
-
-  if (taskMode === "ask") {
-    return {
-      badge: "Chip Copilot",
-      title: "芯片问答工作台",
-      inputLabel: "问题或任务",
-      inputPlaceholder: "输入问题或任务",
-      outputLabel: "回答",
-      actionLabel: "开始提问",
-      helper: "面向芯片与技术写作场景。",
-    };
-  }
-
-  return {
-    badge: "Document Translation",
-    title: "文章翻译工作台",
-    inputLabel: "原文",
-    inputPlaceholder: "输入或粘贴待处理内容",
-    outputLabel: "译文",
-    actionLabel: "开始翻译",
-    helper: "适合连续处理技术文档。",
-  };
-}
-
-function applyModeDefaults(taskMode: TaskMode) {
-  if (taskMode === "polish") {
+function modeDefaults(mode: TaskMode) {
+  if (mode === "polish") {
     return {
       sourceLanguage: "English",
       targetLanguage: "English",
       translationStyle: "natural",
     };
   }
-
-  if (taskMode === "ask") {
-    return {
-      sourceLanguage: "auto",
-      targetLanguage: "Chinese (Simplified)",
-      translationStyle: "natural",
-    };
-  }
-
   return {
     sourceLanguage: "auto",
     targetLanguage: "Chinese (Simplified)",
@@ -152,57 +95,75 @@ function applyModeDefaults(taskMode: TaskMode) {
   };
 }
 
+function actionLabel(mode: TaskMode) {
+  if (mode === "polish") return "润色";
+  if (mode === "ask") return "提问";
+  return "翻译";
+}
+
+function inputPlaceholder(mode: TaskMode) {
+  if (mode === "polish") return "粘贴英文草稿…";
+  if (mode === "ask") return "输入问题…";
+  return "粘贴或输入原文…";
+}
+
 export function WorkspaceClient() {
   const router = useRouter();
   const [user, setUser] = useState<CurrentUser | null>(null);
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [booting, setBooting] = useState(true);
+
   const [threads, setThreads] = useState<TranslationThread[]>([]);
-  const [messages, setMessages] = useState<TranslationMessage[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<TranslationMessage[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
+
+  const [glossary, setGlossary] = useState<GlossaryTerm[]>([]);
+
   const [taskMode, setTaskMode] = useState<TaskMode>("translate");
   const [model, setModel] = useState<string>(modelOptions[1].value);
-  const [sourceLanguage, setSourceLanguage] = useState<string>(
-    languageOptions[0].value,
-  );
-  const [targetLanguage, setTargetLanguage] = useState<string>(
-    languageOptions[1].value,
-  );
-  const [translationStyle, setTranslationStyle] = useState<string>(
-    translationStyles[0].value,
-  );
-  const [terminologyPreferences, setTerminologyPreferences] = useState("");
+  const [sourceLanguage, setSourceLanguage] = useState<string>("auto");
+  const [targetLanguage, setTargetLanguage] = useState<string>("Chinese (Simplified)");
+  const [translationStyle, setTranslationStyle] = useState<string>("natural");
+
   const [sourceText, setSourceText] = useState("");
   const [resultText, setResultText] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [toast, setToast] = useState("");
   const [copied, setCopied] = useState(false);
+
+  const [drawer, setDrawer] = useState<DrawerView>(null);
+
   const abortRef = useRef<AbortController | null>(null);
-  const resultRef = useRef<HTMLDivElement | null>(null);
+  const outputRef = useRef<HTMLDivElement | null>(null);
 
   const activeThread = useMemo(
-    () => threads.find((thread) => thread.id === activeThreadId) ?? null,
+    () => threads.find((t) => t.id === activeThreadId) ?? null,
     [activeThreadId, threads],
   );
-  const copy = useMemo(() => modeCopy(taskMode), [taskMode]);
-  const glossaryRuleCount = useMemo(
-    () => countGlossaryRules(terminologyPreferences),
-    [terminologyPreferences],
-  );
+  const overLimit = sourceText.length > MAX_SOURCE_CHARS;
   const sameLanguage =
     taskMode === "translate" &&
     sourceLanguage !== "auto" &&
     sourceLanguage === targetLanguage;
-  const overLimit = sourceText.length > MAX_SOURCE_CHARS;
 
+  // Restore draft
   useEffect(() => {
     try {
-      const draft = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+      const draft = window.localStorage.getItem(DRAFT_KEY);
       if (draft) setSourceText(draft);
     } catch {}
   }, []);
 
+  // Persist draft
+  useEffect(() => {
+    try {
+      if (sourceText) window.localStorage.setItem(DRAFT_KEY, sourceText);
+      else window.localStorage.removeItem(DRAFT_KEY);
+    } catch {}
+  }, [sourceText]);
+
+  // Persist prefs
   useEffect(() => {
     if (!user?.username) return;
     savePrefs(user.username, {
@@ -211,169 +172,134 @@ export function WorkspaceClient() {
       sourceLanguage,
       targetLanguage,
       translationStyle,
-      terminologyPreferences,
     });
-  }, [
-    model,
-    sourceLanguage,
-    targetLanguage,
-    taskMode,
-    terminologyPreferences,
-    translationStyle,
-    user,
-  ]);
+  }, [user, taskMode, model, sourceLanguage, targetLanguage, translationStyle]);
 
+  // Auto-scroll output
   useEffect(() => {
-    try {
-      if (sourceText) window.localStorage.setItem(DRAFT_STORAGE_KEY, sourceText);
-      else window.localStorage.removeItem(DRAFT_STORAGE_KEY);
-    } catch {}
-  }, [sourceText]);
-
-  useEffect(() => {
-    if (!copied) return;
-    const timer = window.setTimeout(() => setCopied(false), 1800);
-    return () => window.clearTimeout(timer);
-  }, [copied]);
-
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(""), 2400);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
-
-  useEffect(() => {
-    if (resultRef.current) {
-      resultRef.current.scrollTop = resultRef.current.scrollHeight;
+    if (outputRef.current) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight;
     }
   }, [resultText]);
 
+  // Toast auto-dismiss
+  useEffect(() => {
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(""), 2200);
+    return () => window.clearTimeout(t);
+  }, [toast]);
+
+  useEffect(() => {
+    if (!copied) return;
+    const t = window.setTimeout(() => setCopied(false), 1800);
+    return () => window.clearTimeout(t);
+  }, [copied]);
+
+  // Bootstrap
   useEffect(() => {
     let active = true;
-
-    async function bootstrap() {
+    (async () => {
       try {
-        const currentUser = await requestCurrentUser();
-        if (!currentUser) {
+        const current = await requestCurrentUser();
+        if (!current) {
           router.replace("/login");
           return;
         }
         if (!active) return;
-        setUser(currentUser);
+        setUser(current);
 
-        const prefs = loadPrefs(currentUser.username);
+        const prefs = loadPrefs(current.username);
         if (prefs) {
-          setTaskMode(prefs.taskMode);
-          if (modelOptions.some((m) => m.value === prefs.model)) setModel(prefs.model);
-          if (languageOptions.some((l) => l.value === prefs.sourceLanguage)) {
+          if (prefs.taskMode) setTaskMode(prefs.taskMode);
+          if (prefs.model && modelOptions.some((m) => m.value === prefs.model)) {
+            setModel(prefs.model);
+          }
+          if (
+            prefs.sourceLanguage &&
+            languageOptions.some((l) => l.value === prefs.sourceLanguage)
+          ) {
             setSourceLanguage(prefs.sourceLanguage);
           }
           if (
+            prefs.targetLanguage &&
             languageOptions.some(
               (l) => l.value === prefs.targetLanguage && l.value !== "auto",
             )
           ) {
             setTargetLanguage(prefs.targetLanguage);
           }
-          if (translationStyles.some((s) => s.value === prefs.translationStyle)) {
+          if (
+            prefs.translationStyle &&
+            translationStyles.some((s) => s.value === prefs.translationStyle)
+          ) {
             setTranslationStyle(prefs.translationStyle);
           }
-          setTerminologyPreferences(prefs.terminologyPreferences ?? "");
         }
 
-        const historyThreads = await requestTranslationThreads();
+        const [hist, terms] = await Promise.all([
+          requestTranslationThreads(),
+          requestGlossary().catch(() => [] as GlossaryTerm[]),
+        ]);
         if (!active) return;
-        setThreads(historyThreads);
-        if (historyThreads.length > 0) {
-          setActiveThreadId(historyThreads[0].id);
+        setThreads(hist);
+        setGlossary(terms);
+        if (hist.length > 0) setActiveThreadId(hist[0].id);
+      } catch (err) {
+        if (active) {
+          setError(err instanceof Error ? err.message : "初始化失败。");
         }
-      } catch (requestError) {
-        if (!active) return;
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : "初始化工作台失败，请刷新重试。",
-        );
       } finally {
-        if (active) setCheckingAuth(false);
+        if (active) setBooting(false);
       }
-    }
-
-    void bootstrap();
+    })();
     return () => {
       active = false;
     };
   }, [router]);
 
+  // Load messages on thread change
   useEffect(() => {
     let active = true;
-
-    async function loadMessages() {
+    (async () => {
       if (!activeThreadId) {
         setMessages([]);
         return;
       }
-
       setLoadingMessages(true);
       try {
-        const nextMessages = await requestTranslationMessages(activeThreadId);
-        if (!active) return;
-        setMessages(nextMessages);
-      } catch (requestError) {
-        if (!active) return;
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : "加载会话消息失败。",
-        );
+        const msgs = await requestTranslationMessages(activeThreadId);
+        if (active) setMessages(msgs);
+      } catch {
+        // ignore
       } finally {
         if (active) setLoadingMessages(false);
       }
-    }
-
-    void loadMessages();
+    })();
     return () => {
       active = false;
     };
   }, [activeThreadId]);
 
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort();
-    };
-  }, []);
-
-  const refreshThreads = useCallback(
-    async (preferredThreadId?: string | null) => {
-      const nextThreads = await requestTranslationThreads();
-      setThreads(nextThreads);
-
-      if (preferredThreadId) {
-        setActiveThreadId(preferredThreadId);
-        return;
-      }
-      if (!activeThreadId && nextThreads.length > 0) {
-        setActiveThreadId(nextThreads[0].id);
-      }
-    },
-    [activeThreadId],
-  );
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const handleTranslate = useCallback(async () => {
     const trimmed = sourceText.trim();
     if (!trimmed) {
-      setError("请先输入正文、英文草稿或问题。");
+      setError("请先输入内容。");
       return;
     }
     if (overLimit) {
-      setError(`输入内容超过 ${MAX_SOURCE_CHARS} 字符上限，请拆分后再处理。`);
+      setError(`超过 ${MAX_SOURCE_CHARS} 字符上限。`);
+      return;
+    }
+    if (sameLanguage) {
+      setError("翻译模式下请选择不同的语言。");
       return;
     }
     if (streaming) return;
 
     const controller = new AbortController();
     abortRef.current = controller;
-
     setStreaming(true);
     setError("");
     setCopied(false);
@@ -387,7 +313,6 @@ export function WorkspaceClient() {
           sourceLanguage,
           targetLanguage,
           translationStyle,
-          terminologyPreferences,
           sourceText,
           threadId: activeThreadId,
           contextDepth: 8,
@@ -400,33 +325,33 @@ export function WorkspaceClient() {
         setError("当前环境不支持流式读取。");
         return;
       }
-
       const decoder = new TextDecoder();
-      let fullText = "";
+      let full = "";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        fullText += decoder.decode(value, { stream: true });
-        setResultText(fullText);
+        full += decoder.decode(value, { stream: true });
+        setResultText(full);
       }
 
-      const nextThreadId = threadId ?? activeThreadId;
+      const nextId = threadId ?? activeThreadId;
       try {
-        await refreshThreads(nextThreadId);
-        if (nextThreadId) {
-          const nextMessages = await requestTranslationMessages(nextThreadId);
-          setMessages(nextMessages);
+        const nextThreads = await requestTranslationThreads();
+        setThreads(nextThreads);
+        if (nextId) {
+          setActiveThreadId(nextId);
+          const nextMsgs = await requestTranslationMessages(nextId);
+          setMessages(nextMsgs);
         }
+        // refresh glossary usage counts
+        const nextTerms = await requestGlossary().catch(() => null);
+        if (nextTerms) setGlossary(nextTerms);
       } catch {}
-    } catch (requestError) {
+    } catch (err) {
       if (controller.signal.aborted) {
-        setNotice("已停止当前处理。");
+        setToast("已停止。");
       } else {
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : "服务暂时不可用，请稍后再试。",
-        );
+        setError(err instanceof Error ? err.message : "服务暂不可用。");
       }
     } finally {
       setStreaming(false);
@@ -436,13 +361,12 @@ export function WorkspaceClient() {
     activeThreadId,
     model,
     overLimit,
-    refreshThreads,
+    sameLanguage,
     sourceLanguage,
     sourceText,
     streaming,
     targetLanguage,
     taskMode,
-    terminologyPreferences,
     translationStyle,
   ]);
 
@@ -464,7 +388,7 @@ export function WorkspaceClient() {
       await navigator.clipboard.writeText(resultText);
       setCopied(true);
     } catch {
-      setError("复制失败，浏览器可能禁用了剪贴板权限。");
+      setError("复制失败。");
     }
   }
 
@@ -475,455 +399,697 @@ export function WorkspaceClient() {
     setSourceText("");
     setResultText("");
     setError("");
-    setNotice("已切换到空白工作区。");
+    setToast("新会话");
   }
 
   function handleSwapLanguages() {
     if (sourceLanguage === "auto") {
-      setNotice("自动识别时无法互换，请先选择具体的原文语言。");
+      setToast("自动识别无法互换");
       return;
     }
-    const nextSource = targetLanguage;
-    const nextTarget = sourceLanguage;
-    setSourceLanguage(nextSource);
-    setTargetLanguage(nextTarget);
+    const s = targetLanguage;
+    const t = sourceLanguage;
+    setSourceLanguage(s);
+    setTargetLanguage(t);
     if (sourceText && resultText) {
       setSourceText(resultText);
       setResultText(sourceText);
     }
   }
 
-  function handleUseMessage(message: TranslationMessage) {
-    setModel(message.model);
-    setSourceLanguage(message.sourceLanguage);
-    setTargetLanguage(message.targetLanguage);
-    setTranslationStyle(message.translationStyle);
-    setSourceText(message.sourceText);
-    setResultText(message.translatedText);
-    setNotice("已把这条历史载入当前工作区。");
+  function handleModeChange(next: TaskMode) {
+    if (streaming) return;
+    setTaskMode(next);
+    const d = modeDefaults(next);
+    setSourceLanguage(d.sourceLanguage);
+    setTargetLanguage(d.targetLanguage);
+    setTranslationStyle(d.translationStyle);
   }
 
-  function handleClearSource() {
-    setSourceText("");
-    setResultText("");
-  }
-
-  function handleEditorKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-      event.preventDefault();
+  function handleEditorKey(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
       void handleTranslate();
     }
   }
 
-  function handleModeSwitch(nextMode: TaskMode) {
-    if (streaming) return;
-    setTaskMode(nextMode);
-    const defaults = applyModeDefaults(nextMode);
-    setSourceLanguage(defaults.sourceLanguage);
-    setTargetLanguage(defaults.targetLanguage);
-    setTranslationStyle(defaults.translationStyle);
-    setNotice(`已切换到${taskModeOptions.find((item) => item.value === nextMode)?.label}模式。`);
+  async function handleDeleteThread(id: string) {
+    if (!window.confirm("删除这个会话？")) return;
+    try {
+      await deleteTranslationThread(id);
+      const next = threads.filter((t) => t.id !== id);
+      setThreads(next);
+      if (activeThreadId === id) {
+        setActiveThreadId(next[0]?.id ?? null);
+        setMessages([]);
+      }
+      setToast("已删除");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除失败。");
+    }
   }
 
-  function handleApplyTerminologyPreset(value: string) {
-    setTerminologyPreferences((current) =>
-      current.trim() ? `${current.trim()}\n${value}` : value,
-    );
-    setNotice("已追加一组术语偏好。");
+  async function handleRenameThread(id: string, currentTitle: string) {
+    const next = window.prompt("新的标题", currentTitle);
+    if (!next || !next.trim() || next.trim() === currentTitle) return;
+    try {
+      const updated = await renameTranslationThread(id, next.trim());
+      setThreads((prev) => prev.map((t) => (t.id === id ? { ...t, ...updated } : t)));
+      setToast("已重命名");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "重命名失败。");
+    }
   }
 
-  function handleResetTerminologyPreferences() {
-    setTerminologyPreferences("");
-    setNotice("已清空当前账号的术语偏好。");
+  async function handleAddTerm(sourceTerm: string, targetTerm: string, note: string) {
+    try {
+      const created = await createGlossaryTerm({
+        sourceTerm: sourceTerm.trim(),
+        targetTerm: targetTerm.trim(),
+        note: note.trim(),
+      });
+      setGlossary((prev) => {
+        const rest = prev.filter((t) => t.id !== created.id);
+        return [created, ...rest];
+      });
+      setToast("已加入术语本");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "新增失败。");
+    }
   }
 
-  if (checkingAuth) {
+  async function handleDeleteTerm(id: string) {
+    try {
+      await deleteGlossaryTerm(id);
+      setGlossary((prev) => prev.filter((t) => t.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除失败。");
+    }
+  }
+
+  async function handleEditTerm(term: GlossaryTerm) {
+    const src = window.prompt("原文术语", term.sourceTerm);
+    if (src === null) return;
+    const tgt = window.prompt("译文术语", term.targetTerm);
+    if (tgt === null) return;
+    const note = window.prompt("备注（可选）", term.note) ?? "";
+    try {
+      const updated = await updateGlossaryTerm(term.id, {
+        sourceTerm: src.trim() || term.sourceTerm,
+        targetTerm: tgt.trim() || term.targetTerm,
+        note: note.trim(),
+      });
+      setGlossary((prev) => prev.map((t) => (t.id === term.id ? updated : t)));
+      setToast("已更新");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "更新失败。");
+    }
+  }
+
+  if (booting) {
     return (
-      <section className="auth-card">
-        <span className="eyebrow">Workspace Loading</span>
-        <h1>正在准备文档工作台</h1>
-        <p>系统会先恢复登录态，再加载你的会话历史与常用偏好。</p>
-      </section>
+      <div className="auth-shell">
+        <div className="auth-card">
+          <div className="auth-head">
+            <h1>载入中…</h1>
+          </div>
+        </div>
+      </div>
     );
   }
 
   const charCountClass = overLimit
     ? "char-count over"
     : sourceText.length > MAX_SOURCE_CHARS * 0.85
-      ? "char-count warning"
+      ? "char-count warn"
       : "char-count";
 
-  const translateDisabled =
-    streaming || !sourceText.trim() || overLimit || sameLanguage;
+  const translateDisabled = streaming || !sourceText.trim() || overLimit || sameLanguage;
 
   return (
-    <div className="workspace-shell doc-shell">
-      <section className="doc-hero">
-        <div className="doc-hero-copy">
-          <span className="eyebrow">{copy.badge}</span>
-          <h1>{copy.title}</h1>
-          <p>{copy.helper}</p>
-        </div>
-        <div className="doc-hero-meta">
-          <div className="identity-chip">
-            <span>当前账号</span>
-            <strong>{user?.username ?? "-"}</strong>
-          </div>
-          <div className="hero-actions">
-            <button className="ghost-button" onClick={handleNewThread} type="button">
-              新建工作区
-            </button>
-            <button className="ghost-button" onClick={handleLogout} type="button">
-              退出登录
-            </button>
-          </div>
-        </div>
-      </section>
+    <div className="ws">
+      <header className="ws-header">
+        <div className="ws-brand">Translator</div>
 
-      <section className="doc-layout">
-        <aside className="doc-sidebar">
-          <section className="sidebar-card">
-            <div className="sidebar-card-header">
-              <h2>任务模式</h2>
-              <span>3 种模式</span>
-            </div>
-            <div className="mode-list">
-              {taskModeOptions.map((item) => (
+        <div className="mode-pills" role="tablist">
+          {taskModeOptions.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              role="tab"
+              aria-selected={taskMode === item.value}
+              className={`mode-pill ${taskMode === item.value ? "active" : ""}`}
+              onClick={() => handleModeChange(item.value)}
+              disabled={streaming}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="ws-header-spacer" />
+
+        <div className="ws-header-actions">
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setDrawer("history")}
+            aria-label="历史"
+            title="历史"
+          >
+            <HistoryIcon />
+            {threads.length > 0 ? (
+              <span className="icon-btn-badge">{threads.length}</span>
+            ) : null}
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setDrawer("glossary")}
+            aria-label="术语本"
+            title="术语本"
+          >
+            <BookIcon />
+            {glossary.length > 0 ? (
+              <span className="icon-btn-badge">{glossary.length}</span>
+            ) : null}
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={handleNewThread}
+            aria-label="新会话"
+            title="新会话"
+          >
+            <PlusIcon />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={handleLogout}
+            aria-label="退出"
+            title={user?.username ?? ""}
+          >
+            <LogoutIcon />
+          </button>
+        </div>
+      </header>
+
+      <main className="ws-main">
+        <div className="ws-toolbar">
+          <select
+            className="select"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            disabled={streaming}
+            aria-label="模型"
+          >
+            {modelOptions.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+
+          {taskMode !== "polish" ? (
+            <>
+              <select
+                className="select"
+                value={sourceLanguage}
+                onChange={(e) => setSourceLanguage(e.target.value)}
+                disabled={streaming}
+                aria-label="原文语言"
+              >
+                {languageOptions.map((l) => (
+                  <option key={l.value} value={l.value}>
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+
+              {taskMode === "translate" ? (
                 <button
-                  key={item.value}
-                  className={`mode-card ${taskMode === item.value ? "active" : ""}`}
-                  onClick={() => handleModeSwitch(item.value)}
                   type="button"
+                  className="swap-btn"
+                  onClick={handleSwapLanguages}
+                  disabled={streaming || sourceLanguage === "auto"}
+                  aria-label="互换语言"
+                  title="互换"
                 >
-                  <strong>{item.label}</strong>
-                  <span>{item.description}</span>
+                  ⇄
                 </button>
+              ) : null}
+
+              <select
+                className="select"
+                value={targetLanguage}
+                onChange={(e) => setTargetLanguage(e.target.value)}
+                disabled={streaming}
+                aria-label="目标语言"
+              >
+                {languageOptions
+                  .filter((l) => l.value !== "auto")
+                  .map((l) => (
+                    <option key={l.value} value={l.value}>
+                      {l.label}
+                    </option>
+                  ))}
+              </select>
+            </>
+          ) : null}
+
+          {taskMode === "translate" ? (
+            <select
+              className="select"
+              value={translationStyle}
+              onChange={(e) => setTranslationStyle(e.target.value)}
+              disabled={streaming}
+              aria-label="风格"
+            >
+              {translationStyles.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
               ))}
-            </div>
-          </section>
+            </select>
+          ) : null}
+        </div>
 
-          <section className="sidebar-card">
-            <div className="sidebar-card-header">
-              <h2>会话历史</h2>
-              <span>{threads.length} 条</span>
-            </div>
-            <div className="history-list">
-              {threads.length === 0 ? (
-                <p className="placeholder">还没有历史，先处理一段内容吧。</p>
-              ) : (
-                threads.map((thread) => (
-                  <button
-                    key={thread.id}
-                    className={`history-item ${
-                      activeThreadId === thread.id ? "active" : ""
-                    }`}
-                    onClick={() => setActiveThreadId(thread.id)}
-                    type="button"
-                  >
-                    <strong>{thread.title}</strong>
-                    <span>{thread.lastPreview || "暂无预览"}</span>
-                    <small>
-                      {thread.messageCount} 条 · {formatTimeLabel(thread.updated_at)}
-                    </small>
-                  </button>
-                ))
-              )}
-            </div>
-          </section>
-        </aside>
+        {error ? (
+          <p className="error-banner" role="alert">
+            <span>{error}</span>
+            <button
+              type="button"
+              className="link-btn"
+              onClick={() => setError("")}
+              aria-label="关闭"
+            >
+              ×
+            </button>
+          </p>
+        ) : null}
 
-        <main className="doc-main">
-          <section className="main-card mode-banner">
-            <div className="mode-banner-copy">
-              <span className="section-kicker">Workspace</span>
-              <h2>{copy.title}</h2>
-              <div className="mode-tags">
-                <span>{taskModeOptions.find((item) => item.value === taskMode)?.label}</span>
-                <span>支持流式输出</span>
-              </div>
+        <div className="ws-panels">
+          <section className="panel">
+            <div className="panel-head">
+              <strong>{taskMode === "ask" ? "问题" : "输入"}</strong>
+              <span className={charCountClass}>
+                {sourceText.length.toLocaleString()} /{" "}
+                {MAX_SOURCE_CHARS.toLocaleString()}
+              </span>
             </div>
-            <p>{copy.inputLabel}</p>
-          </section>
-
-          <section className="workbench-grid">
-            <article className="main-card composer-card">
-              <div className="panel-header">
-                <h2>{copy.inputLabel}</h2>
-                <div className="panel-meta">
-                  <span className={charCountClass}>
-                    {sourceText.length.toLocaleString()} /{" "}
-                    {MAX_SOURCE_CHARS.toLocaleString()}
-                  </span>
-                  {sourceText ? (
-                    <button
-                      className="text-button"
-                      onClick={handleClearSource}
-                      type="button"
-                      disabled={streaming}
-                    >
-                      清空
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-
+            <div className="panel-body input-body">
               <textarea
-                className="editor doc-editor"
-                placeholder={copy.inputPlaceholder}
+                className="input-editor"
+                placeholder={inputPlaceholder(taskMode)}
                 value={sourceText}
-                onChange={(event) => setSourceText(event.target.value)}
-                onKeyDown={handleEditorKeyDown}
-                aria-label={copy.inputLabel}
+                onChange={(e) => setSourceText(e.target.value)}
+                onKeyDown={handleEditorKey}
+                aria-label="输入"
               />
-
-              <div className="button-row">
-                <button
-                  className="primary-button"
-                  onClick={handleTranslate}
-                  type="button"
-                  disabled={translateDisabled}
-                >
-                  {streaming ? "处理中..." : copy.actionLabel}
-                </button>
+            </div>
+            <div className="panel-foot primary">
+              <span className="thread-hint">
+                {activeThread ? activeThread.title : "新会话"}
+              </span>
+              <div style={{ display: "flex", gap: 8 }}>
                 {streaming ? (
-                  <button
-                    className="ghost-button"
-                    onClick={handleStop}
-                    type="button"
-                  >
+                  <button type="button" className="btn btn-ghost" onClick={handleStop}>
                     停止
                   </button>
                 ) : null}
-              </div>
-            </article>
-
-            <article className="main-card result-card">
-              <div className="panel-header">
-                <h2>{copy.outputLabel}</h2>
                 <button
-                  className="text-button"
-                  onClick={handleCopy}
                   type="button"
+                  className="btn btn-primary"
+                  onClick={handleTranslate}
+                  disabled={translateDisabled}
+                >
+                  {streaming ? "处理中…" : `${actionLabel(taskMode)}  ⌘↵`}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="panel">
+            <div className="panel-head">
+              <strong>{taskMode === "ask" ? "回答" : "输出"}</strong>
+              <div className="panel-head-actions">
+                {resultText && taskMode === "translate" ? (
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => setDrawer("glossary")}
+                    title="把术语加入术语本"
+                  >
+                    + 术语
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={handleCopy}
                   disabled={!resultText}
                 >
-                  {copied ? "已复制" : "复制结果"}
+                  {copied ? "已复制" : "复制"}
                 </button>
               </div>
-
-              <div className="result-box doc-result-box" ref={resultRef} aria-live="polite">
-                {resultText ? (
-                  <>
-                    {resultText}
-                    {streaming ? <span className="caret" aria-hidden="true" /> : null}
-                  </>
-                ) : (
-                  <span className="placeholder">
-                    {streaming ? "正在请求模型..." : "输出会在这里实时出现。"}
-                  </span>
-                )}
-              </div>
-
-              <div className="result-footer">
-                <p className="thread-indicator">
-                  当前会话：
-                  {activeThread ? activeThread.title : "新会话（首次提交后自动创建）"}
-                </p>
-                <p className="thread-indicator">
-                  快捷键：⌘/Ctrl + Enter
-                </p>
-              </div>
-            </article>
-          </section>
-
-          {sameLanguage ? (
-            <p className="inline-warning">
-              在“文章翻译”模式下，原文与目标语言相同会让翻译失去意义，请调整语言选项。
-            </p>
-          ) : null}
-
-          <section className="main-card timeline-panel doc-timeline">
-            <div className="timeline-header">
-              <h2>上下文与历史消息</h2>
-              <span>{messages.length} 条</span>
             </div>
-            {loadingMessages ? (
-              <p className="placeholder">正在加载会话内容...</p>
-            ) : messages.length === 0 ? (
-              <p className="placeholder">
-                当前会话还没有消息，完成一次处理后会自动保存。
-              </p>
-            ) : (
-              <div className="timeline-list">
-                {messages.map((message) => (
-                  <article className="timeline-item" key={message.id}>
-                    <header>
-                      <strong>{formatTimeLabel(message.createdAt)}</strong>
-                      <span>{message.model}</span>
-                    </header>
-                    <div className="timeline-text">
-                      <p>
-                        <b>输入：</b>
-                        {message.sourceText}
-                      </p>
-                      <p>
-                        <b>输出：</b>
-                        {message.translatedText}
-                      </p>
-                    </div>
-                    <button
-                      className="text-button"
-                      onClick={() => handleUseMessage(message)}
-                      type="button"
-                    >
-                      载入当前工作区
-                    </button>
-                  </article>
-                ))}
-              </div>
-            )}
-          </section>
-        </main>
-
-        <aside className="doc-rail">
-          <section className="rail-card">
-            <div className="sidebar-card-header">
-              <h2>工作配置</h2>
-              <span>当前设置</span>
-            </div>
-            <div className="field-stack">
-              <label className="field">
-                <span>模型</span>
-                <select
-                  value={model}
-                  onChange={(event) => setModel(event.target.value)}
-                  disabled={streaming}
-                >
-                  {modelOptions.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="field">
-                <span>原文语言</span>
-                <select
-                  value={sourceLanguage}
-                  onChange={(event) => setSourceLanguage(event.target.value)}
-                  disabled={streaming || taskMode === "polish"}
-                >
-                  {languageOptions.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="field">
-                <span className="field-header">
-                  输出语言
-                  {taskMode === "translate" ? (
-                    <button
-                      className="swap-button"
-                      onClick={handleSwapLanguages}
-                      type="button"
-                      disabled={streaming || sourceLanguage === "auto"}
-                      title="互换原文与目标语言"
-                      aria-label="互换原文与目标语言"
-                    >
-                      ↔
-                    </button>
-                  ) : null}
+            <div className="panel-body output-box" ref={outputRef} aria-live="polite">
+              {resultText ? (
+                <>
+                  {resultText}
+                  {streaming ? <span className="caret" aria-hidden="true" /> : null}
+                </>
+              ) : (
+                <span className="placeholder">
+                  {streaming ? "正在请求模型…" : "输出将在这里实时显示。"}
                 </span>
-                <select
-                  value={targetLanguage}
-                  onChange={(event) => setTargetLanguage(event.target.value)}
-                  disabled={streaming || taskMode === "polish"}
+              )}
+            </div>
+            <div className="panel-foot">
+              <span>{messages.length > 0 ? `${messages.length} 条历史` : "—"}</span>
+              {messages.length > 0 ? (
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => setDrawer("messages")}
                 >
-                  {languageOptions
-                    .filter((item) => item.value !== "auto")
-                    .map((item) => (
-                      <option key={item.value} value={item.value}>
-                        {item.label}
-                      </option>
-                    ))}
-                </select>
-              </label>
-
-              <label className="field">
-                <span>输出偏好</span>
-                <select
-                  value={translationStyle}
-                  onChange={(event) => setTranslationStyle(event.target.value)}
-                  disabled={streaming || taskMode !== "translate"}
-                >
-                  {translationStyles.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  查看上下文
+                </button>
+              ) : null}
             </div>
           </section>
+        </div>
+      </main>
 
-          <section className="rail-card">
-            <div className="sidebar-card-header">
-              <h2>个人术语本</h2>
-              <span>{glossaryRuleCount} 条</span>
-            </div>
-            <label className="field">
-              <span>术语映射 / 风格规则</span>
-              <textarea
-                className="mini-editor"
-                value={terminologyPreferences}
-                onChange={(event) => setTerminologyPreferences(event.target.value)}
-                placeholder="例如：\nChiplet -> 小芯粒\nTape-out -> 流片\nBring-up -> 板级 bring-up"
-              />
-            </label>
-            <div className="glossary-actions">
+      {drawer ? (
+        <>
+          <div
+            className="drawer-backdrop"
+            onClick={() => setDrawer(null)}
+            aria-hidden="true"
+          />
+          <aside className="drawer" role="dialog" aria-modal="true">
+            <div className="drawer-grabber" aria-hidden="true" />
+            <div className="drawer-head">
+              <h2>
+                {drawer === "history"
+                  ? "历史会话"
+                  : drawer === "glossary"
+                    ? "术语本"
+                    : "当前会话上下文"}
+              </h2>
               <button
-                className="ghost-button"
-                onClick={handleResetTerminologyPreferences}
                 type="button"
-                disabled={!terminologyPreferences.trim()}
+                className="icon-btn"
+                onClick={() => setDrawer(null)}
+                aria-label="关闭"
               >
-                清空术语本
+                ×
               </button>
             </div>
-            <div className="preset-stack">
-              {terminologyPresets.map((preset) => (
-                <button
-                  key={preset.label}
-                  className="preset-chip"
-                  onClick={() => handleApplyTerminologyPreset(preset.value)}
-                  type="button"
-                >
-                  <strong>{preset.label}</strong>
-                  <span>{preset.hint}</span>
-                </button>
-              ))}
+            <div className="drawer-body">
+              {drawer === "history" ? (
+                <ThreadList
+                  threads={threads}
+                  activeId={activeThreadId}
+                  onSelect={(id) => {
+                    setActiveThreadId(id);
+                    setDrawer(null);
+                  }}
+                  onRename={handleRenameThread}
+                  onDelete={handleDeleteThread}
+                />
+              ) : drawer === "glossary" ? (
+                <GlossaryView
+                  terms={glossary}
+                  onAdd={handleAddTerm}
+                  onEdit={handleEditTerm}
+                  onDelete={handleDeleteTerm}
+                />
+              ) : (
+                <MessageList messages={messages} loading={loadingMessages} />
+              )}
             </div>
-          </section>
-        </aside>
-      </section>
-
-      {error ? (
-        <p className="form-error workspace-error" role="alert">
-          <span>{error}</span>
-          <button
-            className="dismiss-button"
-            type="button"
-            onClick={() => setError("")}
-            aria-label="关闭提示"
-          >
-            ×
-          </button>
-        </p>
+          </aside>
+        </>
       ) : null}
-      {notice ? <p className="workspace-notice">{notice}</p> : null}
+
+      {toast ? <div className="toast">{toast}</div> : null}
     </div>
+  );
+}
+
+function ThreadList({
+  threads,
+  activeId,
+  onSelect,
+  onRename,
+  onDelete,
+}: {
+  threads: TranslationThread[];
+  activeId: string | null;
+  onSelect: (id: string) => void;
+  onRename: (id: string, title: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  if (threads.length === 0) {
+    return <p className="list-empty">还没有历史</p>;
+  }
+  return (
+    <>
+      {threads.map((t) => (
+        <div key={t.id} className={`thread-row ${activeId === t.id ? "active" : ""}`}>
+          <button
+            type="button"
+            onClick={() => onSelect(t.id)}
+            style={{
+              textAlign: "left",
+              display: "grid",
+              gap: 4,
+              background: "transparent",
+            }}
+          >
+            <strong>{t.title}</strong>
+            {t.lastPreview ? (
+              <small style={{ color: "var(--muted)" }}>{t.lastPreview}</small>
+            ) : null}
+            <small>
+              {t.messageCount} 条 · {formatTime(t.updated_at)}
+            </small>
+          </button>
+          <div className="thread-row-actions">
+            <button
+              type="button"
+              className="link-btn"
+              onClick={() => onRename(t.id, t.title)}
+            >
+              重命名
+            </button>
+            <button
+              type="button"
+              className="link-btn"
+              style={{ color: "var(--danger)" }}
+              onClick={() => onDelete(t.id)}
+            >
+              删除
+            </button>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function MessageList({
+  messages,
+  loading,
+}: {
+  messages: TranslationMessage[];
+  loading: boolean;
+}) {
+  if (loading) return <p className="list-empty">加载中…</p>;
+  if (messages.length === 0) return <p className="list-empty">暂无上下文</p>;
+  return (
+    <>
+      {messages.map((m) => (
+        <article key={m.id} className="msg-item">
+          <header>
+            <span>{formatTime(m.createdAt)}</span>
+            <span>{m.model.split("/")[1] ?? m.model}</span>
+          </header>
+          <p className="source">{m.sourceText}</p>
+          <p>{m.translatedText}</p>
+        </article>
+      ))}
+    </>
+  );
+}
+
+function GlossaryView({
+  terms,
+  onAdd,
+  onEdit,
+  onDelete,
+}: {
+  terms: GlossaryTerm[];
+  onAdd: (source: string, target: string, note: string) => void;
+  onEdit: (term: GlossaryTerm) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [src, setSrc] = useState("");
+  const [tgt, setTgt] = useState("");
+  const [note, setNote] = useState("");
+
+  function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!src.trim() || !tgt.trim()) return;
+    onAdd(src, tgt, note);
+    setSrc("");
+    setTgt("");
+    setNote("");
+  }
+
+  return (
+    <>
+      <form className="glossary-form" onSubmit={submit}>
+        <div className="glossary-form-row">
+          <input
+            className="input"
+            placeholder="原文术语"
+            value={src}
+            onChange={(e) => setSrc(e.target.value)}
+          />
+          <input
+            className="input"
+            placeholder="译文 / 首选表达"
+            value={tgt}
+            onChange={(e) => setTgt(e.target.value)}
+          />
+        </div>
+        <input
+          className="input"
+          placeholder="备注（可选）"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+        <button type="submit" className="btn btn-primary btn-block" disabled={!src.trim() || !tgt.trim()}>
+          加入术语本
+        </button>
+      </form>
+
+      {terms.length === 0 ? (
+        <p className="list-empty">还没有术语。加几条你常用的词,下次翻译会自动带上。</p>
+      ) : (
+        terms.map((t) => (
+          <div key={t.id} className="glossary-item">
+            <div className="glossary-item-body">
+              <div className="glossary-item-terms">
+                <span>{t.sourceTerm}</span>
+                <span className="sep">→</span>
+                <span>{t.targetTerm}</span>
+              </div>
+              {t.note ? <div className="glossary-item-meta">{t.note}</div> : null}
+              <div className="glossary-item-meta">
+                用过 {t.usageCount} 次
+                {t.lastUsedAt ? ` · ${formatTime(t.lastUsedAt)}` : ""}
+              </div>
+            </div>
+            <div className="glossary-item-actions">
+              <button type="button" className="link-btn" onClick={() => onEdit(t)}>
+                编辑
+              </button>
+              <button
+                type="button"
+                className="link-btn"
+                style={{ color: "var(--danger)" }}
+                onClick={() => onDelete(t.id)}
+              >
+                删除
+              </button>
+            </div>
+          </div>
+        ))
+      )}
+    </>
+  );
+}
+
+/* --------- Icons --------- */
+
+function HistoryIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
+function BookIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 4h10a4 4 0 0 1 4 4v12H8a4 4 0 0 1-4-4V4z" />
+      <path d="M4 16a4 4 0 0 1 4-4h10" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function LogoutIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M15 17l5-5-5-5" />
+      <path d="M20 12H9" />
+      <path d="M13 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8" />
+    </svg>
   );
 }

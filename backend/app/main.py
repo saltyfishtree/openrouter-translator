@@ -14,6 +14,9 @@ from app.config import Settings, get_settings
 from app.database import get_supabase
 from app.schemas import (
     AuthPayload,
+    GlossaryTermPatch,
+    GlossaryTermPayload,
+    GlossaryTermResponse,
     HealthResponse,
     RegisterPayload,
     RenameThreadPayload,
@@ -66,49 +69,58 @@ def target_language_label(value: str) -> str:
     return source_language_label(value)
 
 
-def build_system_prompt(payload: TranslatePayload) -> str:
-    terminology_block = ""
-    if payload.terminology_preferences.strip():
-        terminology_block = " ".join(
-            [
-                "Prefer the following user-specific terminology and style rules when relevant:",
-                payload.terminology_preferences.strip(),
-            ]
-        )
+def language_pair_key(payload: TranslatePayload) -> str:
+    src = payload.source_language if payload.source_language else "auto"
+    tgt = payload.target_language
+    return f"{src}->{tgt}"
 
+
+def format_glossary_block(terms: list[dict]) -> str:
+    if not terms:
+        return ""
+    lines = []
+    for term in terms[:40]:
+        source_term = (term.get("source_term") or "").strip()
+        target_term = (term.get("target_term") or "").strip()
+        note = (term.get("note") or "").strip()
+        if not source_term or not target_term:
+            continue
+        entry = f"- {source_term} → {target_term}"
+        if note:
+            entry += f" ({note})"
+        lines.append(entry)
+    if not lines:
+        return ""
+    return (
+        "User glossary (honor these mappings when the source term appears; "
+        "do not translate them differently):\n" + "\n".join(lines)
+    )
+
+
+def build_system_prompt(payload: TranslatePayload, glossary_block: str) -> str:
     if payload.task_mode == "polish":
-        return " ".join(
-            [
-                "You are an expert English editor for technical and product documentation.",
-                "Rewrite the user's text into polished, concise, professional English.",
-                "Preserve intent, facts, structure, and technical accuracy.",
-                "Improve grammar, clarity, flow, and wording without adding unsupported claims.",
-                "This workspace is often used for semiconductor and chip documentation, so prefer precise technical language.",
-                terminology_block,
-                "Return only the polished text.",
-            ]
-        ).strip()
+        parts = [
+            "You are an expert editor.",
+            "Rewrite the user's text into polished, concise, professional English.",
+            "Preserve meaning, structure, and factual accuracy; improve grammar, clarity, and flow.",
+            "Do not add unsupported claims.",
+            glossary_block,
+            "Return only the polished text.",
+        ]
+        return "\n\n".join(p for p in parts if p).strip()
 
     if payload.task_mode == "ask":
-        target_instruction = (
-            "Answer in Chinese (Simplified)."
-            if payload.target_language == "Chinese (Simplified)"
-            else f"Answer in {target_language_label(payload.target_language)}."
-        )
-        return " ".join(
-            [
-                "You are a technical copilot for document engineers working on semiconductor and chip topics.",
-                target_instruction,
-                "Answer clearly, practically, and with strong terminology discipline.",
-                "If the question is ambiguous, make the most reasonable assumption and state it briefly.",
-                "When useful, organize the answer into short bullets or compact sections.",
-                terminology_block,
-                "Do not mention that you are translating unless the user explicitly asks for translation.",
-            ]
-        ).strip()
+        target_instruction = f"Answer in {target_language_label(payload.target_language)}."
+        parts = [
+            "You are a helpful assistant.",
+            target_instruction,
+            "Answer directly and practically. If the question is ambiguous, state your assumption briefly.",
+            glossary_block,
+        ]
+        return "\n\n".join(p for p in parts if p).strip()
 
     source_instruction = (
-        "Automatically detect the source language."
+        "Detect the source language automatically."
         if payload.source_language == "auto"
         else f"The source language is {source_language_label(payload.source_language)}."
     )
@@ -117,18 +129,52 @@ def build_system_prompt(payload: TranslatePayload) -> str:
         if payload.translation_style == "faithful"
         else "Prioritize natural phrasing and readability while preserving meaning."
     )
-    return " ".join(
-        [
-            "You are a professional translation engine.",
-            source_instruction,
-            f"Translate the user text into {target_language_label(payload.target_language)}.",
-            style_instruction,
-            "This workspace is frequently used for semiconductor and chip documentation, so keep technical terms precise.",
-            terminology_block,
-            "Return only the translation.",
-            "Preserve line breaks, lists, names, code blocks, and inline formatting when present.",
-        ]
-    ).strip()
+    parts = [
+        "You are a professional translator.",
+        source_instruction,
+        f"Translate the user text into {target_language_label(payload.target_language)}.",
+        style_instruction,
+        "Preserve line breaks, lists, names, code blocks, and inline formatting.",
+        glossary_block,
+        "Return only the translation.",
+    ]
+    return "\n\n".join(p for p in parts if p).strip()
+
+
+def fetch_active_glossary(supabase, user_id: str, pair_key: str) -> list[dict]:
+    result = (
+        supabase.table("user_terms")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("usage_count", desc=True)
+        .order("last_used_at", desc=True)
+        .limit(200)
+        .execute()
+    ).data or []
+    filtered = [
+        row
+        for row in result
+        if row.get("language_pair") in ("any", "", None, pair_key)
+    ]
+    return filtered[:40]
+
+
+def bump_glossary_usage(supabase, user_id: str, source_text: str, terms: list[dict]) -> None:
+    if not terms or not source_text:
+        return
+    haystack = source_text.lower()
+    now_iso = datetime.now(UTC).isoformat()
+    for term in terms:
+        source_term = (term.get("source_term") or "").strip()
+        if not source_term:
+            continue
+        if source_term.lower() in haystack:
+            supabase.table("user_terms").update(
+                {
+                    "usage_count": (term.get("usage_count") or 0) + 1,
+                    "last_used_at": now_iso,
+                }
+            ).eq("id", term["id"]).eq("user_id", user_id).execute()
 
 
 def build_thread_title(text: str) -> str:
@@ -502,8 +548,13 @@ async def translate(
     ).data
     prior_msgs.reverse()
 
+    pair_key = language_pair_key(payload)
+    active_terms = fetch_active_glossary(supabase, user["id"], pair_key)
+    glossary_block = format_glossary_block(active_terms)
+    bump_glossary_usage(supabase, user["id"], payload.source_text, active_terms)
+
     prompt_messages: list[dict[str, str]] = [
-        {"role": "system", "content": build_system_prompt(payload)}
+        {"role": "system", "content": build_system_prompt(payload, glossary_block)}
     ]
     for msg in prior_msgs:
         prompt_messages.append({"role": "user", "content": msg["source_text"]})
@@ -585,6 +636,163 @@ async def translate(
             "X-Thread-Id": selected_thread["id"],
         },
     )
+
+
+def _normalize_pair(pair: str | None) -> str:
+    value = (pair or "any").strip()
+    return value or "any"
+
+
+def _term_to_response(row: dict) -> GlossaryTermResponse:
+    return GlossaryTermResponse(
+        id=row["id"],
+        source_term=row["source_term"],
+        target_term=row["target_term"],
+        language_pair=row.get("language_pair") or "any",
+        note=row.get("note") or "",
+        usage_count=row.get("usage_count") or 0,
+        last_used_at=row.get("last_used_at"),
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+@app.get("/glossary")
+def list_glossary(
+    user: Annotated[dict, Depends(current_user_or_401)],
+) -> list[GlossaryTermResponse]:
+    """列出当前用户术语本，按使用次数排序。"""
+    supabase = get_supabase()
+    rows = (
+        supabase.table("user_terms")
+        .select("*")
+        .eq("user_id", user["id"])
+        .order("usage_count", desc=True)
+        .order("last_used_at", desc=True)
+        .order("updated_at", desc=True)
+        .limit(400)
+        .execute()
+    ).data or []
+    return [_term_to_response(row) for row in rows]
+
+
+@app.post("/glossary", status_code=201)
+def create_glossary_term(
+    payload: GlossaryTermPayload,
+    user: Annotated[dict, Depends(current_user_or_401)],
+) -> GlossaryTermResponse:
+    """新增或 upsert 一条术语映射。"""
+    supabase = get_supabase()
+    source_term = payload.source_term.strip()
+    target_term = payload.target_term.strip()
+    pair = _normalize_pair(payload.language_pair)
+    note = (payload.note or "").strip()
+
+    existing = (
+        supabase.table("user_terms")
+        .select("*")
+        .eq("user_id", user["id"])
+        .ilike("source_term", source_term)
+        .eq("language_pair", pair)
+        .execute()
+    ).data or []
+
+    now_iso = datetime.now(UTC).isoformat()
+    if existing:
+        row = existing[0]
+        updated = (
+            supabase.table("user_terms")
+            .update(
+                {
+                    "target_term": target_term,
+                    "note": note,
+                    "updated_at": now_iso,
+                }
+            )
+            .eq("id", row["id"])
+            .eq("user_id", user["id"])
+            .execute()
+        ).data[0]
+        return _term_to_response(updated)
+
+    inserted = (
+        supabase.table("user_terms")
+        .insert(
+            {
+                "id": generate_row_id(),
+                "user_id": user["id"],
+                "source_term": source_term,
+                "target_term": target_term,
+                "language_pair": pair,
+                "note": note,
+                "usage_count": 0,
+                "updated_at": now_iso,
+            }
+        )
+        .execute()
+    ).data[0]
+    return _term_to_response(inserted)
+
+
+@app.patch("/glossary/{term_id}")
+def update_glossary_term(
+    term_id: str,
+    payload: GlossaryTermPatch,
+    user: Annotated[dict, Depends(current_user_or_401)],
+) -> GlossaryTermResponse:
+    """编辑已有术语条目。"""
+    supabase = get_supabase()
+    owned = (
+        supabase.table("user_terms")
+        .select("*")
+        .eq("id", term_id)
+        .eq("user_id", user["id"])
+        .execute()
+    ).data
+    if not owned:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="术语不存在。")
+
+    patch: dict[str, object] = {}
+    if payload.source_term is not None and payload.source_term.strip():
+        patch["source_term"] = payload.source_term.strip()
+    if payload.target_term is not None and payload.target_term.strip():
+        patch["target_term"] = payload.target_term.strip()
+    if payload.language_pair is not None:
+        patch["language_pair"] = _normalize_pair(payload.language_pair)
+    if payload.note is not None:
+        patch["note"] = payload.note.strip()
+
+    if not patch:
+        return _term_to_response(owned[0])
+
+    patch["updated_at"] = datetime.now(UTC).isoformat()
+    updated = (
+        supabase.table("user_terms")
+        .update(patch)
+        .eq("id", term_id)
+        .eq("user_id", user["id"])
+        .execute()
+    ).data[0]
+    return _term_to_response(updated)
+
+
+@app.delete("/glossary/{term_id}", status_code=204)
+def delete_glossary_term(
+    term_id: str,
+    user: Annotated[dict, Depends(current_user_or_401)],
+) -> None:
+    """删除一条术语。"""
+    supabase = get_supabase()
+    check = (
+        supabase.table("user_terms")
+        .select("id")
+        .eq("id", term_id)
+        .eq("user_id", user["id"])
+        .execute()
+    )
+    if not check.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="术语不存在。")
+    supabase.table("user_terms").delete().eq("id", term_id).eq("user_id", user["id"]).execute()
 
 
 @app.exception_handler(HTTPException)
