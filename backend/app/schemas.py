@@ -23,9 +23,13 @@ class UserResponse(BaseModel):
 
 class TranslatePayload(BaseModel):
     model: str = Field(min_length=1)
+    task_mode: str = Field(alias="taskMode", default="translate", min_length=1)
     source_language: str = Field(alias="sourceLanguage", min_length=1)
     target_language: str = Field(alias="targetLanguage", min_length=1)
     translation_style: str = Field(alias="translationStyle", min_length=1)
+    terminology_preferences: str = Field(
+        alias="terminologyPreferences", default="", max_length=4000
+    )
     source_text: str = Field(alias="sourceText", min_length=1, max_length=12000)
     thread_id: str | None = Field(alias="threadId", default=None, min_length=1)
     context_depth: int = Field(alias="contextDepth", default=6, ge=0, le=20)

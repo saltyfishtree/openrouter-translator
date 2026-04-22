@@ -129,9 +129,11 @@ export async function requestTranslationMessages(threadId: string) {
 export async function translateStream(
   payload: {
     model: string;
+    taskMode: string;
     sourceLanguage: string;
     targetLanguage: string;
     translationStyle: string;
+    terminologyPreferences?: string;
     sourceText: string;
     threadId?: string | null;
     contextDepth?: number;

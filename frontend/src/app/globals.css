@@ -214,6 +214,301 @@ textarea {
   width: min(1400px, 100%);
 }
 
+.workspace-shell.doc-shell {
+  width: min(1680px, 100%);
+  gap: 18px;
+}
+
+.doc-hero {
+  border: 1px solid rgba(25, 36, 53, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.72)),
+    radial-gradient(circle at top right, rgba(70, 120, 202, 0.16), transparent 24%);
+  border-radius: 32px;
+  box-shadow: 0 30px 80px rgba(30, 55, 90, 0.12);
+  padding: 28px 30px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+}
+
+.doc-hero-copy h1 {
+  margin: 0 0 12px;
+  font-size: clamp(2.1rem, 4vw, 3.4rem);
+}
+
+.doc-hero-copy p {
+  margin: 0;
+  max-width: 760px;
+  color: #526074;
+  line-height: 1.7;
+}
+
+.doc-hero-meta {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.identity-chip {
+  min-width: 210px;
+  border: 1px solid rgba(24, 43, 72, 0.08);
+  background: rgba(244, 249, 255, 0.88);
+  border-radius: 22px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 6px;
+}
+
+.identity-chip span,
+.section-kicker {
+  color: #6d7d93;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.identity-chip strong {
+  font-size: 1rem;
+  color: #1a2433;
+}
+
+.doc-layout {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr) 320px;
+  gap: 18px;
+  align-items: start;
+}
+
+.doc-sidebar,
+.doc-main,
+.doc-rail {
+  display: grid;
+  gap: 18px;
+}
+
+.sidebar-card,
+.rail-card,
+.main-card {
+  border: 1px solid rgba(25, 36, 53, 0.08);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 28px 65px rgba(31, 52, 81, 0.09);
+  border-radius: 28px;
+  padding: 18px;
+}
+
+.sidebar-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  margin-bottom: 14px;
+}
+
+.sidebar-card-header h2,
+.mode-banner h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.sidebar-card-header span,
+.mode-banner p {
+  color: #728195;
+  font-size: 0.87rem;
+}
+
+.mode-list,
+.field-stack,
+.preset-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.mode-card {
+  border: 1px solid rgba(27, 48, 76, 0.08);
+  background: linear-gradient(180deg, rgba(247, 250, 255, 0.96), rgba(241, 246, 252, 0.74));
+  border-radius: 18px;
+  padding: 14px;
+  text-align: left;
+  display: grid;
+  gap: 6px;
+}
+
+.mode-card strong {
+  color: #122033;
+  font-size: 0.97rem;
+}
+
+.mode-card span {
+  color: #617086;
+  line-height: 1.45;
+  font-size: 0.87rem;
+}
+
+.mode-card.active {
+  border-color: rgba(44, 94, 176, 0.35);
+  background: linear-gradient(180deg, rgba(231, 241, 255, 0.98), rgba(223, 237, 255, 0.86));
+  box-shadow: 0 0 0 4px rgba(70, 120, 202, 0.13);
+}
+
+.mode-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.mode-banner-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.mode-banner p {
+  margin: 0;
+  max-width: 560px;
+  line-height: 1.65;
+}
+
+.mode-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mode-tags span {
+  border: 1px solid rgba(44, 94, 176, 0.14);
+  background: rgba(236, 244, 255, 0.82);
+  color: #486487;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.quick-prompt-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.quick-prompt {
+  border: 1px solid rgba(25, 36, 53, 0.08);
+  background: rgba(255, 255, 255, 0.72);
+  color: #3d4f68;
+  border-radius: 18px;
+  padding: 14px 15px;
+  text-align: left;
+  line-height: 1.5;
+  min-height: 92px;
+}
+
+.quick-prompt:hover {
+  transform: translateY(-1px);
+}
+
+.workbench-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.04fr) minmax(0, 0.96fr);
+  gap: 18px;
+}
+
+.composer-card,
+.result-card {
+  display: grid;
+  gap: 16px;
+}
+
+.doc-editor {
+  min-height: 480px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 252, 0.92));
+}
+
+.doc-result-box {
+  min-height: 544px;
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(242, 247, 251, 0.94)),
+    radial-gradient(circle at top right, rgba(65, 112, 184, 0.08), transparent 18%);
+}
+
+.result-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.mini-editor {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  border: 1px solid rgba(25, 36, 53, 0.12);
+  border-radius: 18px;
+  background: rgba(247, 250, 255, 0.94);
+  padding: 14px 16px;
+  outline: none;
+}
+
+.mini-editor:focus {
+  border-color: rgba(44, 94, 176, 0.32);
+  box-shadow: 0 0 0 4px rgba(70, 120, 202, 0.1);
+}
+
+.glossary-summary {
+  border: 1px solid rgba(44, 94, 176, 0.1);
+  background: linear-gradient(180deg, rgba(241, 247, 255, 0.92), rgba(250, 252, 255, 0.82));
+  border-radius: 18px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 6px;
+}
+
+.glossary-summary strong {
+  font-size: 1.7rem;
+  color: #173258;
+  line-height: 1;
+}
+
+.glossary-summary span,
+.glossary-actions p {
+  color: #65758a;
+  line-height: 1.55;
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.glossary-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.preset-chip {
+  border: 1px dashed rgba(44, 94, 176, 0.28);
+  background: rgba(237, 244, 255, 0.8);
+  color: #2c4f86;
+  border-radius: 18px;
+  padding: 12px 14px;
+  text-align: left;
+  display: grid;
+  gap: 4px;
+}
+
+.preset-chip strong {
+  font-size: 0.92rem;
+}
+
+.preset-chip span {
+  color: #617492;
+  font-size: 0.8rem;
+}
+
+.doc-timeline {
+  padding-top: 20px;
+}
+
 .hero-card {
   border-radius: 32px;
   padding: 30px;
@@ -556,7 +851,14 @@ textarea {
 }
 
 @media (max-width: 960px) {
+  .doc-hero,
   .workspace-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-layout,
+  .workbench-grid,
+  .quick-prompt-strip {
     grid-template-columns: 1fr;
   }
 
@@ -565,6 +867,7 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .doc-hero,
   .hero-card {
     flex-direction: column;
   }
@@ -581,6 +884,20 @@ textarea {
   .page-shell,
   .auth-shell {
     padding: 16px;
+  }
+
+  .doc-hero,
+  .sidebar-card,
+  .rail-card,
+  .main-card {
+    border-radius: 22px;
+    padding: 18px;
+  }
+
+  .mode-banner,
+  .result-footer {
+    grid-template-columns: 1fr;
+    display: grid;
   }
 
   .stack-actions {

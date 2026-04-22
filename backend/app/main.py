@@ -45,6 +45,7 @@ MODEL_VALUES = {
     "openai/gpt-5.4-mini",
     "google/gemini-3-flash-preview",
 }
+TASK_MODE_VALUES = {"translate", "polish", "ask"}
 
 
 def source_language_label(value: str) -> str:
@@ -66,6 +67,46 @@ def target_language_label(value: str) -> str:
 
 
 def build_system_prompt(payload: TranslatePayload) -> str:
+    terminology_block = ""
+    if payload.terminology_preferences.strip():
+        terminology_block = " ".join(
+            [
+                "Prefer the following user-specific terminology and style rules when relevant:",
+                payload.terminology_preferences.strip(),
+            ]
+        )
+
+    if payload.task_mode == "polish":
+        return " ".join(
+            [
+                "You are an expert English editor for technical and product documentation.",
+                "Rewrite the user's text into polished, concise, professional English.",
+                "Preserve intent, facts, structure, and technical accuracy.",
+                "Improve grammar, clarity, flow, and wording without adding unsupported claims.",
+                "This workspace is often used for semiconductor and chip documentation, so prefer precise technical language.",
+                terminology_block,
+                "Return only the polished text.",
+            ]
+        ).strip()
+
+    if payload.task_mode == "ask":
+        target_instruction = (
+            "Answer in Chinese (Simplified)."
+            if payload.target_language == "Chinese (Simplified)"
+            else f"Answer in {target_language_label(payload.target_language)}."
+        )
+        return " ".join(
+            [
+                "You are a technical copilot for document engineers working on semiconductor and chip topics.",
+                target_instruction,
+                "Answer clearly, practically, and with strong terminology discipline.",
+                "If the question is ambiguous, make the most reasonable assumption and state it briefly.",
+                "When useful, organize the answer into short bullets or compact sections.",
+                terminology_block,
+                "Do not mention that you are translating unless the user explicitly asks for translation.",
+            ]
+        ).strip()
+
     source_instruction = (
         "Automatically detect the source language."
         if payload.source_language == "auto"
@@ -82,10 +123,12 @@ def build_system_prompt(payload: TranslatePayload) -> str:
             source_instruction,
             f"Translate the user text into {target_language_label(payload.target_language)}.",
             style_instruction,
+            "This workspace is frequently used for semiconductor and chip documentation, so keep technical terms precise.",
+            terminology_block,
             "Return only the translation.",
             "Preserve line breaks, lists, names, code blocks, and inline formatting when present.",
         ]
-    )
+    ).strip()
 
 
 def build_thread_title(text: str) -> str:
@@ -416,6 +459,10 @@ async def translate(
     if payload.model not in MODEL_VALUES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="当前模型不在允许列表中。"
+        )
+    if payload.task_mode not in TASK_MODE_VALUES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="当前工作模式不受支持。"
         )
 
     if payload.thread_id:
