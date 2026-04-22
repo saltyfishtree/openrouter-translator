@@ -49,22 +49,36 @@ export function LandingClient() {
 
   return (
     <main className="auth-shell">
-      <section className="auth-card">
+      <section className="auth-card product-card">
         <div className="auth-copy">
-          <span className="eyebrow">Open Source Translator</span>
-          <h1>前端 TypeScript，后端 Python</h1>
+          <span className="eyebrow">Translator Workspace</span>
+          <h1>面向文档工程师的 AI 工作台</h1>
           <p>
-            使用 OpenRouter 做统一模型接入，支持流式翻译、邀请码注册、服务端会话和
-            Supabase Postgres。
+            用一套干净的工作流完成文章翻译、英文润色和芯片技术问答，让术语、上下文和历史记录都留在同一个地方。
           </p>
+        </div>
+
+        <div className="product-points">
+          <article className="product-point">
+            <strong>长文翻译</strong>
+            <span>适合 datasheet、app note、whitepaper 和客户邮件。</span>
+          </article>
+          <article className="product-point">
+            <strong>术语统一</strong>
+            <span>支持个人术语本，适合固定芯片词法和团队写作口径。</span>
+          </article>
+          <article className="product-point">
+            <strong>流式输出</strong>
+            <span>翻译、润色和问答都可以边生成边查看，不用整段等待。</span>
+          </article>
         </div>
 
         <div className="stack-actions">
           <Link className="primary-button button-link" href="/login">
-            去登录
+            进入工作台
           </Link>
           <Link className="ghost-button button-link" href="/register">
-            去注册
+            注册新账号
           </Link>
         </div>
       </section>

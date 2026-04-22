@@ -48,9 +48,9 @@ export function RegisterForm() {
   return (
     <form className="auth-card" onSubmit={handleSubmit} noValidate>
       <div className="auth-copy">
-        <span className="eyebrow">Invite Only</span>
+        <span className="eyebrow">Create Account</span>
         <h1>注册账号</h1>
-        <p>邀请码为一次性消耗，注册成功后自动登录。若无邀请码请联系管理员获取。</p>
+        <p>这是一个受控开放的工作台。完成注册后会自动登录，你的历史记录和术语偏好会从这个账号开始累积。</p>
       </div>
 
       <label className="field">
@@ -99,7 +99,7 @@ export function RegisterForm() {
       <label className="field">
         <span>邀请码</span>
         <input
-          placeholder="请输入管理员下发的邀请码"
+          placeholder="输入一次性邀请码"
           value={inviteCode}
           onChange={(event) => setInviteCode(event.target.value)}
           required
@@ -111,6 +111,11 @@ export function RegisterForm() {
       <button className="primary-button" type="submit" disabled={!canSubmit}>
         {submitting ? "注册中..." : "注册并进入"}
       </button>
+
+      <div className="auth-note">
+        <strong>邀请制</strong>
+        <span>邀请码只可使用一次，用于控制访问范围和账号开通节奏。</span>
+      </div>
 
       <p className="form-footer">
         已有账号？<Link href="/login">去登录</Link>

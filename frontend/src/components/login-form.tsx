@@ -38,9 +38,9 @@ export function LoginForm() {
   return (
     <form className="auth-card" onSubmit={handleSubmit} noValidate>
       <div className="auth-copy">
-        <span className="eyebrow">Welcome Back</span>
-        <h1>登录翻译台</h1>
-        <p>用户名密码仅经由 Python 后端处理，密码只会以安全哈希形式存储。</p>
+        <span className="eyebrow">Sign In</span>
+        <h1>回到你的工作台</h1>
+        <p>继续处理翻译、润色和芯片文档问答。历史记录、上下文和个人术语偏好都会自动恢复。</p>
       </div>
 
       <label className="field">
@@ -81,8 +81,13 @@ export function LoginForm() {
       {error ? <p className="form-error">{error}</p> : null}
 
       <button className="primary-button" type="submit" disabled={!canSubmit}>
-        {submitting ? "登录中..." : "登录"}
+        {submitting ? "登录中..." : "继续"}
       </button>
+
+      <div className="auth-note">
+        <strong>安全说明</strong>
+        <span>密码仅由后端处理并以安全哈希保存，浏览器不会直接接触模型密钥。</span>
+      </div>
 
       <p className="form-footer">
         没有账号？<Link href="/register">去注册</Link>

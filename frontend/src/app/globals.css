@@ -79,6 +79,10 @@ textarea {
   gap: 18px;
 }
 
+.product-card {
+  width: min(100%, 760px);
+}
+
 .auth-copy h1,
 .hero-card h1 {
   margin: 0;
@@ -189,6 +193,35 @@ textarea {
 .stack-actions {
   display: flex;
   gap: 12px;
+}
+
+.product-points {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.product-point,
+.auth-note {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.56);
+  border-radius: 18px;
+  padding: 14px 15px;
+  display: grid;
+  gap: 6px;
+}
+
+.product-point strong,
+.auth-note strong {
+  font-size: 0.95rem;
+  color: #1f2836;
+}
+
+.product-point span,
+.auth-note span {
+  color: var(--muted);
+  line-height: 1.55;
+  font-size: 0.9rem;
 }
 
 .form-error {
@@ -851,6 +884,10 @@ textarea {
 }
 
 @media (max-width: 960px) {
+  .auth-shell {
+    align-items: flex-start;
+  }
+
   .doc-hero,
   .workspace-layout {
     grid-template-columns: 1fr;
@@ -867,9 +904,30 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .product-points {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-sidebar {
+    order: 2;
+  }
+
+  .doc-main {
+    order: 1;
+  }
+
+  .doc-rail {
+    order: 3;
+  }
+
   .doc-hero,
   .hero-card {
     flex-direction: column;
+  }
+
+  .history-list,
+  .timeline-list {
+    max-height: none;
   }
 }
 
@@ -883,7 +941,8 @@ textarea {
 
   .page-shell,
   .auth-shell {
-    padding: 16px;
+    min-height: auto;
+    padding: 16px 14px 28px;
   }
 
   .doc-hero,
@@ -900,7 +959,77 @@ textarea {
     display: grid;
   }
 
-  .stack-actions {
+  .auth-copy h1,
+  .doc-hero-copy h1 {
+    line-height: 1.06;
+  }
+
+  .stack-actions,
+  .button-row,
+  .hero-actions {
     flex-direction: column;
+  }
+
+  .button-link,
+  .primary-button,
+  .ghost-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .doc-layout,
+  .doc-sidebar,
+  .doc-main,
+  .doc-rail,
+  .workspace-shell.doc-shell {
+    gap: 14px;
+  }
+
+  .panel-header,
+  .sidebar-card-header,
+  .timeline-item header,
+  .doc-hero-meta,
+  .result-footer {
+    gap: 8px;
+  }
+
+  .sidebar-card-header,
+  .panel-header,
+  .timeline-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .doc-editor,
+  .doc-result-box {
+    min-height: 320px;
+  }
+
+  .mini-editor {
+    min-height: 140px;
+  }
+
+  .history-item,
+  .timeline-item,
+  .quick-prompt,
+  .product-point,
+  .auth-note {
+    border-radius: 16px;
+  }
+
+  .quick-prompt {
+    min-height: auto;
+  }
+
+  .workspace-notice {
+    width: calc(100% - 28px);
+    bottom: 14px;
+    text-align: center;
+    border-radius: 18px;
+    white-space: normal;
+  }
+
+  .stack-actions {
+    width: 100%;
   }
 }
